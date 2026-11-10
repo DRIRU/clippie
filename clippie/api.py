@@ -24,7 +24,7 @@ async def lifespan(app: FastAPI):
     get_storage()
     n = jobs.resume_unfinished()
     if n:
-        print(f"[fragforge] resumed {n} unfinished job(s)")
+        print(f"[clippie] resumed {n} unfinished job(s)")
     yield
     jobs.shutdown()
 

@@ -4,13 +4,13 @@ import time
 
 import pytest
 
-os.environ.setdefault("FRAGFORGE_DATA_DIR", tempfile.mkdtemp(prefix="ff-test-val-"))
+os.environ.setdefault("CLIPPIE_DATA_DIR", tempfile.mkdtemp(prefix="ff-test-val-"))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from fragforge.api import app  # noqa: E402
-from fragforge.profiles import registry  # noqa: E402
-from fragforge.profiles.valorant import derive_events  # noqa: E402
+from clippie.api import app  # noqa: E402
+from clippie.profiles import registry  # noqa: E402
+from clippie.profiles.valorant import derive_events  # noqa: E402
 
 from .killfeed_video import render  # noqa: E402
 

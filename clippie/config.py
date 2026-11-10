@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="FRAGFORGE_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="CLIPPIE_", env_file=".env", extra="ignore")
 
     data_dir: Path = Path("./data")
     database_url: str | None = None  # default: sqlite file under data_dir
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     @property
     def db_url(self) -> str:
-        return self.database_url or f"sqlite:///{(self.data_dir / 'fragforge.db').resolve().as_posix()}"
+        return self.database_url or f"sqlite:///{(self.data_dir / 'clippie.db').resolve().as_posix()}"
 
 
 @lru_cache

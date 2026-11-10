@@ -12,8 +12,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fragforge.detection import ocr  # noqa: E402
-from fragforge.profiles.valorant import KILLFEED  # noqa: E402
+from clippie.detection import ocr  # noqa: E402
+from clippie.profiles.valorant import KILLFEED  # noqa: E402
 from tests.killfeed_video import H, W, render  # noqa: E402
 
 EXPECT = {"phoenix", "jett", "sova", "reyna"}

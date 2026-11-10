@@ -77,7 +77,7 @@ def get_storage() -> LocalStorage:
         s = get_settings()
         if s.storage_backend != "local":
             raise RuntimeError(
-                f"FRAGFORGE_STORAGE_BACKEND={s.storage_backend!r} is not implemented yet; use 'local'"
+                f"CLIPPIE_STORAGE_BACKEND={s.storage_backend!r} is not implemented yet; use 'local'"
             )
         _storage = LocalStorage(s.data_dir / "media")
     return _storage

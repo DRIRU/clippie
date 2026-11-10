@@ -7,13 +7,13 @@ from pathlib import Path
 import pytest
 
 DATA = tempfile.mkdtemp(prefix="ff-test-")
-os.environ["FRAGFORGE_DATA_DIR"] = DATA
+os.environ["CLIPPIE_DATA_DIR"] = DATA
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from fragforge import media  # noqa: E402
-from fragforge.api import app  # noqa: E402
-from fragforge.detection import candidates as cand  # noqa: E402
+from clippie import media  # noqa: E402
+from clippie.api import app  # noqa: E402
+from clippie.detection import candidates as cand  # noqa: E402
 
 
 @pytest.fixture(scope="session")

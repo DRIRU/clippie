@@ -1,6 +1,6 @@
 # clippie (barebone prototype)
 
-Phases 1-4 of `../PLAN.md` (Phase 4 = first game profile, experimental), in barebone mode: SQLite + local-directory storage + in-process job workers. No Docker, Postgres, Redis or MinIO needed.
+Phases 1-4 of `PLAN.md` (Phase 4 = first game profile, experimental), in barebone mode: SQLite + local-directory storage + in-process job workers. No Docker, Postgres, Redis or MinIO needed.
 
 ## Run
 
@@ -22,7 +22,7 @@ Tests (include real ffmpeg renders): `.venv/Scripts/python -m pytest -q`
 - Upload (extension allow-list, size limit, ffprobe validation) and public-URL import via yt-dlp (SSRF guard, no user-supplied yt-dlp options).
 - Jobs persisted in SQLite with progress, retry, and automatic re-queue after a restart. Analysis stages are checkpointed (`data/media/analysis/<asset>/`), so a restart skips finished stages.
 - Generic detection: audio loudness + spectral flux, low-res motion, scene cuts, fused into ranked candidates with a stored score breakdown and events.
-- Export: original aspect ratio, and 1080x1920 vertical with a blurred background (no blind centre crop). Libx264 by default; `FRAGFORGE_USE_NVENC=true` for NVENC.
+- Export: original aspect ratio, and 1080x1920 vertical with a blurred background (no blind centre crop). Libx264 by default; `CLIPPIE_USE_NVENC=true` for NVENC.
 - Files are served with HTTP Range support so the player can seek.
 
 ## Game profiles (Phase 4, experimental)
@@ -38,10 +38,10 @@ Tests (include real ffmpeg renders): `.venv/Scripts/python -m pytest -q`
 ## Not yet (see PLAN.md)
 - No authentication: the server binds to 127.0.0.1 only. Do not expose it.
 - Generic mode is unvalidated: it finds loud, busy moments, not specific kills. Qwen verification (Phase 5), captions and facecam layouts (Phase 7) are not built.
-- S3/MinIO storage backend, Postgres, Celery/Redis, Docker Compose, Next.js UI. The storage interface and portable schema are ready for them; `FRAGFORGE_STORAGE_BACKEND=s3` fails loudly rather than silently using local disk.
+- S3/MinIO storage backend, Postgres, Celery/Redis, Docker Compose, Next.js UI. The storage interface and portable schema are ready for them; `CLIPPIE_STORAGE_BACKEND=s3` fails loudly rather than silently using local disk.
 - URL import checks the hostname once; yt-dlp redirects are not re-validated.
 - No retention/cleanup of source and analysis files yet.
 - CS2/PUBG/GTA profiles, automatic game identification, YOLO.
 
 ## Config
-Environment variables with the `FRAGFORGE_` prefix (see `.env.example`): data dir, workers, padding before/after, limits, NVENC.
+Environment variables with the `CLIPPIE_` prefix (see `.env.example`): data dir, workers, padding before/after, limits, NVENC.

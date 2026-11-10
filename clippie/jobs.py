@@ -13,7 +13,7 @@ from .config import get_settings
 from .db import session
 from .models import Job
 
-log = logging.getLogger("fragforge.jobs")
+log = logging.getLogger("clippie.jobs")
 
 _handlers: dict[str, Callable] = {}
 _pool: ThreadPoolExecutor | None = None
