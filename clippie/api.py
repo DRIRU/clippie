@@ -345,7 +345,8 @@ def layout_preview(asset_id: str, body: LayoutPreviewBody | None = None):
             raise HTTPException(400, str(e))
         src, meta = get_storage().local_path(a.source_key), dict(a.meta)
     tt = _pick_time(meta, body.t if body else None)
-    graph = layout_mod.vertical_filter(lay, meta.get("width", 1280), meta.get("height", 720))
+    graph = layout_mod.vertical_filter(lay, meta.get("width", 1280), meta.get("height", 720),
+                                       get_settings().vertical_max_fps, meta.get("fps"))
     graph = graph.replace("format=yuv420p[v]", "scale=540:960,format=yuv420p[v]")    # small, fast preview
     return Response(_still(src, tt, graph=graph), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 

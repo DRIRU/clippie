@@ -45,7 +45,7 @@ def test_filter_graph_shapes():
     lay = Layout.from_dict({"mode": "facecam", "facecam": RECT, "facecam_pct": 30})
     fit = vertical_filter(lay, 1920, 1080)
     assert fit.endswith("format=yuv420p[v]") and "vstack=inputs=2" in fit
-    assert "scale=1080:576" in fit and "crop=1080:1344" in fit                           # 30% of 1920, rest is gameplay
+    assert "scale=1080:576" in fit and "scale=1080:1344:flags=bilinear" in fit            # 30% of 1920, rest is gameplay
     assert "boxblur" in fit                                                              # fit mode keeps the whole frame on a blurred fill
     fill = vertical_filter(Layout.from_dict({"mode": "facecam", "facecam": RECT, "gameplay": "fill", "focus_x": 1.0}), 1920, 1080)
     assert "boxblur" not in fill and "scale=1080:1344[game]" in fill
@@ -53,6 +53,28 @@ def test_filter_graph_shapes():
     import re
     for n in re.findall(r"crop=(\d+):(\d+)", fit + fill):
         assert int(n[0]) % 2 == 0 and int(n[1]) % 2 == 0
+
+
+def test_blur_runs_on_a_small_copy_not_the_full_frame():
+    """The speed-up: boxblur must never see a full-size frame (that was the 77 s vertical export)."""
+    import re
+    lay = Layout.from_dict({"mode": "facecam", "facecam": RECT})
+    for g in (BLUR_FILTER, vertical_filter(lay, 1920, 1080), vertical_filter(Layout.from_dict({"mode": "facecam", "facecam": RECT, "gameplay": "fill"}), 1920, 1080)):
+        assert "boxblur=30:5" not in g
+        for m in re.finditer(r"scale=(\d+):(\d+)[^,;]*,crop=\d+:\d+,boxblur", g):
+            assert int(m.group(1)) <= 136 and int(m.group(2)) <= 240            # the blurred copy is tiny
+
+
+def test_fps_cap_only_slows_down_fast_sources():
+    g60 = vertical_filter(Layout(), 1920, 1080, max_fps=30, src_fps=60)
+    assert g60.startswith("[0:v]fps=30,split=2")
+    assert "fps=" not in vertical_filter(Layout(), 1920, 1080, max_fps=30, src_fps=30)        # already 30
+    assert "fps=" not in vertical_filter(Layout(), 1920, 1080, max_fps=30, src_fps=24)        # never speeds 24 up to 30
+    assert "fps=" not in vertical_filter(Layout(), 1920, 1080, max_fps=30, src_fps=30.0)
+    assert "fps=" not in vertical_filter(Layout(), 1920, 1080, max_fps=0, src_fps=60)         # 0 = keep the source rate
+    assert "fps=" not in vertical_filter(Layout(), 1920, 1080)                                 # no cap by default
+    lay = Layout.from_dict({"mode": "facecam", "facecam": RECT})
+    assert vertical_filter(lay, 1920, 1080, 30, 60).startswith("[0:v]fps=30,split=2")
 
 
 def test_filter_graph_handles_odd_and_narrow_sources():
@@ -176,3 +198,34 @@ def test_frame_and_layout_preview_endpoints(client, video):
     assert asset_of(client, aid)["layout"]["mode"] == "blur"                              # ...without being saved
     assert client.post(f"/api/assets/{aid}/layout-preview", json={"layout": {"mode": "x"}}).status_code == 400
     assert client.get("/api/assets/missing/frame.jpg").status_code == 404
+
+
+# ---------- fps cap, end to end ----------
+@pytest.fixture(scope="module")
+def video60(tmp_path_factory):
+    out = tmp_path_factory.mktemp("fps") / "s60.mp4"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=60:d=6",
+                    "-f", "lavfi", "-i", "sine=f=330:d=6", "-shortest", "-pix_fmt", "yuv420p", str(out)], check=True)
+    return out
+
+
+def exported_fps(client, cid, kind="vertical"):
+    e = client.post(f"/api/candidates/{cid}/export", json={"kinds": [kind]}).json()[0]
+    until(lambda: client.get(f"/api/jobs/{e['job_id']}").json()["status"] in ("done", "failed"))
+    assert client.get(f"/api/jobs/{e['job_id']}").json()["status"] == "done"
+    path = Path(os.environ["CLIPPIE_DATA_DIR"]) / "media" / "exports" / e["export_id"] / f"{kind}.mp4"
+    return media.probe(path)["fps"]
+
+
+def test_vertical_export_caps_fps_but_horizontal_keeps_it(client, video60):
+    from clippie.config import get_settings
+    aid, cid = make_clip(client, video60)
+    assert asset_of(client, aid)["meta"]["fps"] == pytest.approx(60, abs=1)
+    assert exported_fps(client, cid, "vertical") == pytest.approx(30, abs=1)             # capped
+    assert exported_fps(client, cid, "original") == pytest.approx(60, abs=1)             # horizontal is untouched
+    cfg = get_settings()
+    old, cfg.vertical_max_fps = cfg.vertical_max_fps, 0
+    try:
+        assert exported_fps(client, cid, "vertical") == pytest.approx(60, abs=1)        # 0 = keep the source rate
+    finally:
+        cfg.vertical_max_fps = old

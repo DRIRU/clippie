@@ -245,6 +245,7 @@ def export(job_id, asset_id, params, progress):
         want_subs = bool(ex.subtitles)
         style_d, caps, layout_d = asset.caption_style, cd.captions, asset.layout
         w, h = asset.meta.get("width", 1280), asset.meta.get("height", 720)
+        src_fps = asset.meta.get("fps")
         ex.status = "running"
         s.commit()
     key = f"exports/{export_id}/{kind}.mp4"
@@ -256,7 +257,8 @@ def export(job_id, asset_id, params, progress):
                 raise RuntimeError("subtitles for this clip are missing or out of date; generate them again")
             out_w, out_h = (1080, 1920) if kind == "vertical" else (w, h)
             ass = captions_mod.build_ass(caps["words"], captions_mod.CaptionStyle.from_dict(style_d), out_w, out_h)
-        vf = layout_mod.vertical_filter(layout_mod.Layout.from_dict(layout_d), w, h) if kind == "vertical" else None
+        vf = (layout_mod.vertical_filter(layout_mod.Layout.from_dict(layout_d), w, h, get_settings().vertical_max_fps, src_fps)
+              if kind == "vertical" else None)
         rendering.render(src, st.new_path(key), start, end, kind, has_audio, ass_text=ass, vfilter=vf)
     except Exception:
         with session() as s:

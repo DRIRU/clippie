@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     max_upload_gb: float = 20.0
     max_duration_hours: float = 6.0
     use_nvenc: bool = False
+    vertical_max_fps: int = 30        # cap vertical exports at this fps when the source is faster; 0 keeps the source fps
     # Vision-language verification (existing OpenAI-compatible vLLM endpoint). Disabled when unset.
     vlm_base_url: str | None = None   # e.g. http://127.0.0.1:8000/v1
     vlm_model: str | None = None      # default: first model reported by GET /models

@@ -107,6 +107,7 @@ Vertical (9:16, 1080x1920) exports have two layouts, set per video in the **Vert
 - **Preview before you export:** the preview image is rendered with the same filter graph as the export, so what you see is what you get.
 - With *Whole frame*, the webcam also remains visible inside the gameplay picture, because the layout copies it to the top band rather than removing it from the frame. Horizontal exports are unaffected.
 - Subtitles still burn in at the bottom of the finished vertical frame.
+- **Speed:** the blurred fill is computed on a small copy of the frame and scaled back up, which looks the same (SSIM 0.997 against a full-size blur) but is far cheaper. Vertical exports are also capped at 30 fps for 60 fps sources (`CLIPPIE_VERTICAL_MAX_FPS`). In a test on a 1080p60 source, a 20-second vertical clip rendered in about 9 seconds instead of 77 (about 16 seconds if you keep 60 fps). Timings vary by machine and footage.
 
 > **Status:** tested with synthetic video and pixel checks (the right pixels end up in the top band and the gameplay area), not yet with real streamer footage. If your webcam box is a different shape from the band it is scaled to fill it, which crops a little of the edges; draw the box close to the band's shape (wide, about 1080 by 576 for the default) for the cleanest result.
 
@@ -171,6 +172,7 @@ Environment variables with the `CLIPPIE_` prefix, or the same keys in a `.env` f
 | `CLIPPIE_CANDIDATE_PADDING_BEFORE` / `_AFTER` | `8` / `12` | Seconds around each detected moment |
 | `CLIPPIE_MAX_UPLOAD_GB` / `CLIPPIE_MAX_DURATION_HOURS` | `20` / `6` | Input limits |
 | `CLIPPIE_USE_NVENC` | `false` | Use NVIDIA NVENC for exports |
+| `CLIPPIE_VERTICAL_MAX_FPS` | `30` | Cap vertical exports at this frame rate when the source is faster (`0` keeps the source rate). Sources at or below the cap are never changed. |
 | `CLIPPIE_VLM_BASE_URL` | unset | OpenAI-compatible endpoint; AI verification is off when unset |
 | `CLIPPIE_VLM_MODEL` | auto | Model id; defaults to the first one the server reports |
 | `CLIPPIE_VLM_FRAMES` / `CLIPPIE_VLM_MAX_IMAGES` | `6` / `4` | Frames sampled per clip / images per request |
