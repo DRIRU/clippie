@@ -227,6 +227,27 @@ def _read_wav(path: Path):
 
 
 _model_device = "cpu"
+_dlls_ready = False
+
+
+def _prepare_cuda_dlls() -> None:
+    """Windows: the pip packages nvidia-cublas-cu12 / nvidia-cudnn-cu12 keep their DLLs in
+    site-packages/nvidia/*/bin, which Windows does not search by itself. Register those folders so
+    CTranslate2 can find them. (On Linux, install the CUDA 12 / cuDNN 9 libraries system-wide.)"""
+    global _dlls_ready
+    if _dlls_ready or os.name != "nt":
+        return
+    _dlls_ready = True
+    import site
+    import sys
+    roots = {Path(p) for p in site.getsitepackages() + [site.getusersitepackages()]} | {Path(sys.prefix) / "Lib" / "site-packages"}
+    for root in roots:
+        for bin_dir in (root / "nvidia").glob("*/bin"):
+            try:
+                os.add_dll_directory(str(bin_dir))
+            except (OSError, AttributeError):
+                pass
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
 
 
 def _load_model(force_cpu: bool = False):
@@ -234,6 +255,7 @@ def _load_model(force_cpu: bool = False):
     with _model_lock:
         if _model is None:
             os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+            _prepare_cuda_dlls()
             from faster_whisper import WhisperModel
 
             cfg = get_settings()

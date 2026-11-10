@@ -20,9 +20,9 @@ Self-hosted · local-first · no paid AI APIs
 
 ```
  YouTube / Twitch link ─┐
-                        ├─▶  prepare ─▶ analyze ─▶ AI check ─▶ trimmed clips ─▶ review ─▶ export
+                        ├─▶  prepare ─▶ analyze ─▶ AI check ─▶ trimmed clips ─▶ review ─▶ export (one or many)
  local video upload  ───┘    (live step-by-step progress)       ready to play   approve    ├─ original aspect
-                                                                                reject    └─ vertical 9:16
+                                                                                reject    └─ vertical 9:16   (pick one)
                                                                                 adjust
 ```
 
@@ -36,7 +36,8 @@ Self-hosted · local-first · no paid AI APIs
 | **AI verification** *(optional)* | Sends a few frames per clip to your own OpenAI-compatible vision model (for example vLLM serving Qwen2.5-VL) and shows a verdict with a one-line explanation. |
 | **Big, customizable subtitles** | Local speech-to-text (faster-whisper) on just each clip, shown live over the clip and burned into exports. Choose size (Small to Huge, or any size), font, colours, outline or solid box, position, words per line, ALL CAPS, and a highlighted spoken word, or start from a preset (Bold, Clean, Boxed, Shorts). |
 | **Review in the browser** | Approve or reject, and adjust a clip's length with 2-second nudges; it is re-trimmed automatically. |
-| **Two exports per clip** | Original aspect ratio, and 1080×1920 vertical with a blurred background (no blind centre crop). |
+| **One format per export** | Choose **Vertical 9:16** (1080×1920 with a blurred background, no blind centre crop) or **Horizontal** (the original aspect ratio). One is enough; your choice is remembered. |
+| **Bulk export** | Tick any clips, or leave none ticked to export every approved clip, in one click. Then download all the finished files as a single zip. |
 | **Delete anything** | Remove a video and all of its clips, exports and files. Running jobs are cancelled. |
 | **Survives restarts** | Jobs live in SQLite with progress and retry. Finished analysis stages are checkpointed and skipped on resume. |
 | **Runs anywhere** | SQLite + local folder + in-process workers. No Docker, Postgres, Redis or MinIO needed. |
@@ -66,7 +67,7 @@ After pulling an update, restart the server (Ctrl+C, then run it again) so the b
 1. **Add a video.** Paste a YouTube or Twitch link, or switch to **Upload**. Pick a game profile (and your in-game name for Valorant) and leave *Analyze automatically* on.
 2. **Watch the pipeline.** The tracker shows which step is running and how far along it is. The library entry on the left mirrors it.
 3. **Review clips.** Each clip appears already trimmed. Play it, check the AI note if enabled, then **Approve** or **Reject**. Use **Adjust length** to make a clip start earlier, end later, and so on; it is re-trimmed automatically.
-4. **Export.** **Export** renders the original-aspect and vertical 9:16 versions, each with a download link.
+4. **Export.** Pick a **Format** (Vertical 9:16 or Horizontal) above the clips. **Export** on a clip renders just that clip. For many clips, tick the ones you want (or **Select all**) and use **Export N selected**; with nothing ticked the button exports **all approved clips**. Each finished file has a download link, and **Download zip** gives you every finished export for the chosen format in one file (`clip-01-vertical.mp4`, `clip-02-vertical.mp4`, ...).
 5. **Subtitles (optional).** Tick *Add subtitles to clips* when adding a video, or open the **Subtitles** panel and click **Generate subtitles**. Style them with the controls (the preview on every clip updates as you drag), then turn on *Show on clips and burn into exports*. Exports then include them.
 6. **Clean up.** **Delete** removes a video and everything derived from it.
 
@@ -79,7 +80,14 @@ Videos analyzed before clip trimming existed have no trimmed clips yet; use **Re
 - **Customizable:** text size (presets Small, Medium, Large, Huge, or a 2% to 18% slider, as a share of the video height), position and distance from the edge, font, bold, ALL CAPS, words shown at a time, text / spoken-word / outline colours, outline thickness, and an optional solid box with adjustable opacity. Settings are saved per video.
 - **Burned-in exports:** original and vertical 9:16 exports render the same style with ffmpeg's subtitle renderer. Sizes are relative to each export's own height, so the vertical export scales them up automatically.
 - **Trimming a clip** clears its subtitles and transcribes the new span automatically.
-- **CPU or GPU:** with the default `auto` setting a CUDA GPU is used when its libraries are installed, otherwise it falls back to the CPU. On the CPU, a 14-second clip took about 3 seconds with `tiny.en` in a small test.
+- **CPU or GPU:** with the default `auto` setting an NVIDIA GPU is used when its CUDA libraries are installed, otherwise it falls back to the CPU automatically. In a small test, a 14-second clip took about 3 seconds on the CPU and about 0.3 seconds on a GTX 1650 (`tiny.en`).
+- **Enabling the GPU:** install the CUDA 12 libraries into the same environment (about 1 GB):
+
+```bash
+.venv/Scripts/python -m pip install -r requirements-gpu.txt
+```
+
+  On Windows clippie finds them automatically. On Linux, install the CUDA 12 and cuDNN 9 libraries system-wide instead.
 
 > **Status:** checked with real speech (Windows text-to-speech) and the `tiny.en` model, and with mocked transcription in the tests, including pixel checks that the text is burned into both export shapes. It has **not** been evaluated on real gameplay audio, which is noisy and full of game sound, so expect more transcription mistakes there. Fonts come from your system; if a font is missing, the renderer substitutes another.
 
@@ -149,7 +157,7 @@ Environment variables with the `CLIPPIE_` prefix, or the same keys in a `.env` f
 | `CLIPPIE_VLM_FRAMES` / `CLIPPIE_VLM_MAX_IMAGES` | `6` / `4` | Frames sampled per clip / images per request |
 | `CLIPPIE_AUTO_VERIFY` | `true` | Verify automatically after analysis when the endpoint is set |
 | `CLIPPIE_WHISPER_MODEL` | `base` | Speech model for subtitles (`tiny`, `base`, `small`, `medium`, `.en` variants) |
-| `CLIPPIE_WHISPER_DEVICE` / `CLIPPIE_WHISPER_COMPUTE_TYPE` | `auto` / `auto` | `cpu` or `cuda`; `auto` falls back to the CPU if GPU libraries are missing |
+| `CLIPPIE_WHISPER_DEVICE` / `CLIPPIE_WHISPER_COMPUTE_TYPE` | `auto` / `auto` | `cpu` or `cuda`; `auto` uses the GPU when its libraries are installed and falls back to the CPU otherwise |
 | `CLIPPIE_WHISPER_LANGUAGE` | detect | Force a language code such as `en` |
 | `CLIPPIE_AUTO_CAPTIONS` | `false` | Transcribe every new video without being asked |
 

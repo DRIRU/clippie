@@ -130,7 +130,7 @@
   .media video { width:100%; height:100%; display:block; background:#000 }
   .media .wait { display:grid; gap:10px; justify-items:center; color:var(--muted); font-size:13px }
   .media.pending { background:linear-gradient(135deg,#1a1e29,#12151c) }
-  .tag-top { position:absolute; left:10px; top:10px; font-size:12px; font-weight:700; padding:3px 10px; border-radius:999px; background:var(--accent); color:#fff; pointer-events:none }
+  .tag-top { position:absolute; left:50px; top:10px; font-size:12px; font-weight:700; padding:3px 10px; border-radius:999px; background:var(--accent); color:#fff; pointer-events:none }
   .len { position:absolute; right:10px; top:10px; font-size:12px; font-weight:600; padding:2px 8px; border-radius:6px; background:rgba(14,16,21,.8); color:#fff; pointer-events:none }
   .cb { padding:14px 16px 16px; display:grid; gap:12px }
   .score-row { display:flex; align-items:center; gap:10px }
@@ -181,6 +181,17 @@
   .cap .w { white-space:pre-wrap }
   .cap[data-sample="1"] { opacity:.85 }
 
+  /* bulk export */
+  .bulk { padding:12px 16px; display:flex; flex-wrap:wrap; gap:12px 18px; align-items:center; margin-bottom:16px }
+  .bulk .l { display:flex; align-items:center; gap:14px; flex-wrap:wrap }
+  .bulk .r { margin-left:auto; display:flex; flex-wrap:wrap; gap:10px; align-items:center }
+  .bulk label.check input { width:18px; height:18px }
+  .bulk .stat { font-size:13px; color:var(--muted); display:flex; align-items:center; gap:8px }
+  .bulk .stat .dot { width:16px; height:16px; border-width:2px }
+  .pickbox { position:absolute; left:10px; top:10px; z-index:3; display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:8px; background:rgba(14,16,21,.75); cursor:pointer }
+  .pickbox input { width:18px; height:18px; margin:0; accent-color:var(--accent); cursor:pointer }
+  .clip.picked { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) }
+
   .skel { overflow:hidden }
   .skel .a { aspect-ratio:16/9; background:linear-gradient(135deg,#1a1e29,#12151c) }
   .skel .b { padding:14px; display:grid; gap:10px }
@@ -223,9 +234,14 @@
 const $ = id => document.getElementById(id);
 let selected = null, profiles = [], mode = 'link', vlmEnabled = false;
 let filter = 'all', sortBy = 'best';
-let sigs = {}, lastAsset = null;
+let sigs = {}, lastAsset = null, lastCands = [];
 let capStyle = null, capOpts = null, saveTimer = null, saveNote = '';
 const overlays = new Set();
+const picked = new Set();              // clip ids ticked for bulk export
+let exportLoaders = new Set();         // per-card functions that refresh their export list
+let exportKind = 'vertical';
+try { exportKind = localStorage.getItem('clippie.exportKind') === 'original' ? 'original' : 'vertical'; } catch (e) { /* storage may be unavailable */ }
+const kindLabel = k => k === 'vertical' ? 'Vertical 9:16' : 'Horizontal';
 const openAdjust = new Set();
 
 function el(tag, props = {}, ...kids) {
@@ -365,7 +381,9 @@ function renderHead(a) {
 
 // ---------- clips ----------
 async function renderClips(a) {
+  exportLoaders = new Set();
   const cands = await api(`/assets/${a.id}/candidates`);
+  lastCands = cands;
   const area = $('clipsArea');
   const P = a.pipeline, running = P.state === 'running' || P.state === 'waiting';
   if (!cands.length) {
@@ -377,7 +395,7 @@ async function renderClips(a) {
     if (running) area.querySelector('.bar').append(el('span', { class: 'muted' }, 'Clips appear here, already trimmed, as soon as the analysis finishes.'));
     return;
   }
-  const best = Math.max(...cands.map(c => c.score));
+  const best = Math.max(...cands.map(c => c.score)), bestId = (cands.find(c => c.score === best) || {}).id;
   let shown = cands.filter(c => filter === 'all' || (filter === 'approved' ? c.status === 'approved' : c.status === 'pending'));
   shown.sort((x, y) => sortBy === 'best' ? y.score - x.score : x.start - y.start);
   const seg = (id, text) => el('button', { class: filter === id ? 'on' : '', onclick: () => { filter = id; sigs.clips = null; poll(true); } }, text);
@@ -390,7 +408,8 @@ async function renderClips(a) {
       el('div', {}, el('h3', {}, 'Clips'), el('span', { class: 'muted', style: 'margin-left:10px' }, `${cands.length} found · ${toReview} to review`)),
       el('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;align-items:center' },
         el('div', { class: 'tabs' }, seg('all', 'All'), seg('approved', 'Approved'), seg('pending', 'To review')), sortSel)),
-    shown.length ? el('div', { class: 'grid' }, ...shown.map(c => clipCard(a, c, c.score === best && cands.length > 1)))
+    bulkBar(a, cands, shown),
+    shown.length ? el('div', { class: 'grid' }, ...shown.map(c => clipCard(a, c, best > 0 && c.id === bestId && cands.length > 1)))
       : el('div', { class: 'card empty' }, el('h3', {}, 'Nothing here'), el('div', {}, 'No clips match this filter.')));
 }
 
@@ -413,14 +432,17 @@ function clipCard(a, c, top) {
   const loadExports = async () => {
     const ex = await api(`/candidates/${c.id}/exports`);
     exportsBox.replaceChildren(...ex.slice(0, 4).map(x => el('div', {}, chip(x.status), el('span', {}, x.kind), x.subtitles ? chip('subtitles', 'event') : null, x.url ? el('a', { href: x.url, download: '' }, 'Download') : null)));
-    if (ex.some(x => ['queued', 'running'].includes(x.status))) setTimeout(loadExports, 1500);
   };
   loadExports();
+  exportLoaders.add(loadExports);
   const open = openAdjust.has(c.id), bd = c.score_breakdown || {};
   const media = c.preview_url
     ? el('div', { class: 'media' }, el('video', { controls: true, playsinline: true, preload: 'metadata', src: c.preview_url, 'aria-label': 'Clip preview' }), top ? el('div', { class: 'tag-top' }, 'Top pick') : null)
     : el('div', { class: 'media pending' }, el('div', { class: 'wait' }, el('div', { class: 'dot running' }), 'Trimming clip...'), top ? el('div', { class: 'tag-top' }, 'Top pick') : null);
   media.append(el('div', { class: 'len' }, clock(c.length)));
+  media.append(el('label', { class: 'pickbox', title: 'Select for bulk export' },
+    el('input', { type: 'checkbox', class: 'pick', 'data-id': c.id, 'aria-label': 'Select clip for bulk export', checked: picked.has(c.id),
+      onchange: e => { e.target.checked ? picked.add(c.id) : picked.delete(c.id); paintBulk(lastAsset, lastCands); } })));
   if (c.preview_url) attachOverlay(media, media.querySelector('video'), (c.captions && c.captions.words) || []);
   return el('div', { class: 'card clip ' + c.status },
     media,
@@ -428,7 +450,7 @@ function clipCard(a, c, top) {
       el('div', { class: 'score-row' }, el('span', { class: 'score' }, c.score.toFixed(2)),
         el('div', { class: 'meter' }, el('i', { style: `width:${Math.round(Math.min(1, c.score) * 100)}%` })),
         chip(c.status === 'pending' ? 'to review' : c.status, c.status)),
-      el('div', { class: 'chips' }, ...(c.event_types || []).map(t => chip(label(t), 'event')), c.manual ? chip('manual') : null),
+      el('div', { class: 'chips' }, ...(c.event_types || []).map(t => chip(label(t), 'event')), c.manual && !(c.event_types || []).includes('manual') ? chip('manual') : null),
       aiBlock(c.verification),
       open ? el('div', { class: 'adjust' },
         el('div', { style: 'display:flex;justify-content:space-between;color:var(--muted);font-size:13px' }, el('span', {}, 'Clip length'), el('b', { style: 'color:var(--text)' }, clock(c.length))),
@@ -440,10 +462,61 @@ function clipCard(a, c, top) {
         el('button', { class: 'btn bad', onclick: async () => { await post(`/candidates/${c.id}/reject`); sigs.clips = null; poll(true); } }, 'Reject'),
         el('button', { class: 'btn link', 'aria-expanded': String(open), onclick: () => { open ? openAdjust.delete(c.id) : openAdjust.add(c.id); sigs.clips = null; poll(true); } }, 'Adjust length', icon.chev()),
         capStyle && capStyle.enabled ? el('span', { class: 'muted push', style: 'font-size:12px;margin-right:4px' }, c.captions ? 'Subtitles on' : 'No subtitles yet') : null,
-        el('button', { class: capStyle && capStyle.enabled ? 'btn' : 'btn push', title: 'Render the original and the vertical 9:16 version', onclick: async () => { try { await post(`/candidates/${c.id}/export`, { kinds: ['original', 'vertical'] }); loadExports(); } catch (x) { toast(x.message, true) } } }, 'Export')),
+        el('button', { class: capStyle && capStyle.enabled ? 'btn' : 'btn push', title: `Render this clip as ${kindLabel(exportKind)}`, onclick: async () => { try { await post(`/candidates/${c.id}/export`, { kinds: [exportKind] }); loadExports(); } catch (x) { toast(x.message, true) } } }, `Export ${exportKind === 'vertical' ? '9:16' : 'horizontal'}`)),
       exportsBox));
 }
 
+
+
+// ---------- bulk export ----------
+function bulkBar(a, cands, shown) {
+  const approved = cands.filter(c => c.status === 'approved').length;
+  const selectAll = el('input', { type: 'checkbox', id: 'selAll', 'aria-label': 'Select all clips shown' });
+  selectAll.onchange = () => {
+    shown.forEach(c => selectAll.checked ? picked.add(c.id) : picked.delete(c.id));
+    document.querySelectorAll('.clip .pick').forEach(i => { i.checked = picked.has(i.dataset.id); i.closest('.clip').classList.toggle('picked', i.checked); });
+    paintBulk(a, cands);
+  };
+  const fmt = seg([['vertical', 'Vertical 9:16'], ['original', 'Horizontal']], exportKind, k => {
+    exportKind = k; try { localStorage.setItem('clippie.exportKind', k); } catch (e) { /* ignore */ }
+    sigs.clips = null; poll(true);
+  });
+  const exportBtn = el('button', { class: 'btn', id: 'bulkExport', onclick: async () => {
+    try {
+      const ids = picked.size ? [...picked] : null;
+      const r = await post(`/assets/${a.id}/export`, { candidate_ids: ids, kinds: [exportKind] });
+      toast(`Exporting ${r.count} clip${r.count === 1 ? '' : 's'} as ${kindLabel(exportKind)}.` + (r.without_subtitles.length ? ` ${r.without_subtitles.length} had no subtitles yet.` : ''));
+      sigs.exp = null; poll(true);
+    } catch (x) { toast(x.message, true); }
+  } });
+  const zipBtn = el('button', { class: 'btn ghost', id: 'zipBtn', title: 'Download the finished exports as one zip', onclick: () => {
+    const q = new URLSearchParams({ kind: exportKind }); if (picked.size) q.set('ids', [...picked].join(','));
+    const link = el('a', { href: `/api/assets/${a.id}/exports.zip?${q}`, download: '' }); document.body.append(link); link.click(); link.remove();
+  } }, 'Download zip');
+  const bar = el('div', { class: 'card bulk', id: 'bulkBar' },
+    el('div', { class: 'l' }, el('label', { class: 'check' }, selectAll, 'Select all'), el('span', { class: 'stat', id: 'bulkStat' })),
+    el('div', { class: 'r' }, el('span', { class: 'muted', style: 'font-size:12px' }, 'Format'), fmt, exportBtn, zipBtn));
+  bar._cands = cands; bar._approved = approved; bar._shown = shown;
+  queueMicrotask(() => paintBulk(a, cands));
+  return bar;
+}
+function paintBulk(a, cands) {
+  const bar = document.getElementById('bulkBar'); if (!bar) return;
+  const approved = cands.filter(c => c.status === 'approved').length;
+  const btn = document.getElementById('bulkExport'), zip = document.getElementById('zipBtn'), stat = document.getElementById('bulkStat'), all = document.getElementById('selAll');
+  const n = picked.size;
+  btn.textContent = n ? `Export ${n} selected` : `Export all approved (${approved})`;
+  btn.disabled = !n && !approved;
+  btn.title = n ? 'Export the ticked clips' : 'Export every approved clip; tick clips to pick specific ones';
+  zip.disabled = !(a.exports && a.exports.done);
+  const shownIds = (bar._shown || []).map(c => c.id);
+  all.checked = shownIds.length > 0 && shownIds.every(id => picked.has(id));
+  all.indeterminate = !all.checked && shownIds.some(id => picked.has(id));
+  const e = a.exports || {};
+  stat.replaceChildren(...(e.queued + e.running > 0 ? [el('div', { class: 'dot running' }), `Exporting, ${e.queued + e.running} left`]
+    : [n ? `${n} selected` : (e.done ? `${e.done} exported` : '')]));
+  document.querySelectorAll('.clip').forEach(card => { const i = card.querySelector('.pick'); if (i) card.classList.toggle('picked', i.checked); });
+}
 
 // ---------- subtitles ----------
 const SAMPLE = ['Your', 'subtitles', 'look', 'like', 'this'].map((w, i) => ({ w, s: i * 0.4, e: i * 0.4 + 0.35 }));
@@ -553,7 +626,7 @@ function renderSubtitles(a) {
   const st = capStyle, step = a.pipeline.steps.find(s => s.id === 'captions');
   const generating = step && (step.state === 'running' || step.state === 'pending') && a.latest_job && ['running', 'queued'].includes(a.latest_job.status);
   const ready = a.captions_ready >= a.candidate_count;
-  const openState = host.querySelector('details') ? host.querySelector('details').open : true;
+  const openState = host.querySelector('details') ? host.querySelector('details').open : false;   // collapsed until opened
   const sizeBtns = Object.entries(capOpts.sizes).map(([n, v]) => [v, n]);
   const body = el('div', { class: 'subs-body' },
     el('div', { class: 'subs-top' },
@@ -599,7 +672,7 @@ function renderSubtitles(a) {
 }
 
 // ---------- polling / routing ----------
-async function select(id) { selected = id; sigs = {}; await poll(true); }
+async function select(id) { selected = id; sigs = {}; picked.clear(); await poll(true); }
 
 let polling = false;
 async function poll(force) {
@@ -616,7 +689,7 @@ async function poll(force) {
         el('div', {}, list.length ? 'Choose one from the library to see its progress and clips.' : 'Paste a YouTube or Twitch link to get started.')));
       return;
     }
-    if (sigs.styleFor !== a.id) { sigs.styleFor = a.id; capStyle = { ...a.caption_style }; saveNote = ''; }
+    if (sigs.styleFor !== a.id) { sigs.styleFor = a.id; capStyle = { ...a.caption_style }; saveNote = ''; picked.clear(); }
     const ss = JSON.stringify([a.id, a.candidate_count, a.captions_ready, isBusy(a), (a.pipeline.steps.find(x => x.id === 'captions') || {}).state]);
     if (ss !== sigs.subs) { sigs.subs = ss; renderSubtitles(a); }
     const hs = JSON.stringify([a.id, a.status, a.game, a.profile_config, isBusy(a), a.candidate_count > 0, vlmEnabled]);
@@ -624,6 +697,9 @@ async function poll(force) {
     renderPipeline(a);
     const cs = JSON.stringify([a.id, a.candidate_count, a.verified_count, a.previews_ready, a.captions_ready, capStyle && capStyle.enabled, a.pipeline.state === 'running', filter, sortBy, [...openAdjust]]);
     if (cs !== sigs.clips) { sigs.clips = cs; await renderClips(a); }
+    const es = JSON.stringify(a.exports);
+    if (es !== sigs.exp) { sigs.exp = es; exportLoaders.forEach(f => f()); }
+    paintBulk(a, lastCands);
   } catch (x) { /* transient: next tick retries */ }
   finally { polling = false; }
 }

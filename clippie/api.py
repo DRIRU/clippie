@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import os
+import re
+import tempfile
+import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -157,6 +162,12 @@ def _enrich(s, a: MediaAsset) -> dict:
     d["verified_count"] = sum(1 for c in cands if c.verification)
     d["previews_ready"] = sum(1 for c in cands if c.preview_key)
     d["captions_ready"] = sum(1 for c in cands if c.captions)
+    counts = {"queued": 0, "running": 0, "done": 0, "failed": 0}
+    if cands:
+        for (status,) in s.query(Export.status).filter(Export.candidate_id.in_([c.id for c in cands])).all():
+            counts[status] = counts.get(status, 0) + 1
+    d["exports"] = counts
+    d["exports_pending"] = counts["queued"] + counts["running"]
     d["pipeline"] = build_steps(
         asset={"status": a.status, "has_source_url": bool(a.source_url), "has_source": bool(a.source_key)},
         jobs=jobs_old_first, has_hud=bool(registry.get(a.game).regions), vlm_on=vlm.enabled(),
@@ -401,16 +412,25 @@ def reject(cid: str):
     return _decide(cid, "rejected")
 
 
+EXPORT_KINDS = ("vertical", "original")
+DEFAULT_KIND = "vertical"            # one format per export; the UI lets you pick vertical 9:16 or original aspect
+
+
+def _check_kinds(kinds: list[str] | None) -> list[str]:
+    kinds = list(dict.fromkeys(kinds or [DEFAULT_KIND]))
+    if not kinds or not set(kinds) <= set(EXPORT_KINDS):
+        raise HTTPException(400, "kinds must be vertical and/or original")
+    return kinds
+
+
 class ExportBody(BaseModel):
-    kinds: list[str] = ["original", "vertical"]
+    kinds: list[str] | None = None    # default: ["vertical"]
     subtitles: bool | None = None     # None = burn them in when they are enabled in the style and exist for this clip
 
 
 @app.post("/api/candidates/{cid}/export")
 def export_candidate(cid: str, body: ExportBody | None = None):
-    kinds = (body.kinds if body else None) or ["original", "vertical"]
-    if not set(kinds) <= {"original", "vertical"}:
-        raise HTTPException(400, "kinds must be original and/or vertical")
+    kinds = _check_kinds(body.kinds if body else None)
     out = []
     with session() as s:
         c = _get_cand(s, cid)
@@ -428,6 +448,89 @@ def export_candidate(cid: str, body: ExportBody | None = None):
         jid = jobs.enqueue("export", asset_id, {"export_id": eid})
         out.append({"export_id": eid, "kind": kind, "job_id": jid})
     return out
+
+
+class BulkExportBody(BaseModel):
+    candidate_ids: list[str] | None = None   # default: every approved clip
+    kinds: list[str] | None = None            # default: ["vertical"]
+    subtitles: bool | None = None
+
+
+MAX_BULK = 200
+
+
+@app.post("/api/assets/{asset_id}/export")
+def bulk_export(asset_id: str, body: BulkExportBody | None = None):
+    """Export many clips of one video in one go (the selected ones, or all approved clips)."""
+    kinds = _check_kinds(body.kinds if body else None)
+    explicit = body.subtitles if body else None
+    with session() as s:
+        a = _get_asset(s, asset_id)
+        if a.status != "ready":
+            raise HTTPException(409, "asset is not ready yet")
+        cands = s.query(Candidate).filter_by(asset_id=asset_id).order_by(Candidate.start).all()
+        if body and body.candidate_ids is not None:
+            wanted = set(body.candidate_ids)
+            if wanted - {c.id for c in cands}:
+                raise HTTPException(400, "some of the selected clips do not belong to this video")
+            picked = [c for c in cands if c.id in wanted]
+        else:
+            picked = [c for c in cands if c.status == "approved"]
+        if not picked:
+            raise HTTPException(409, "no clips to export: approve some clips or select the ones you want")
+        if len(picked) * len(kinds) > MAX_BULK:
+            raise HTTPException(400, f"too many exports at once (limit {MAX_BULK})")
+        style = captions.CaptionStyle.from_dict(a.caption_style)
+        lacking = [c for c in picked if not (c.captions and c.captions.get("words"))]
+        if explicit is True and lacking:
+            raise HTTPException(409, f"{len(lacking)} of the selected clips have no subtitles yet; generate them first")
+        rows, without = [], []
+        for c in picked:
+            has_caps = c not in lacking
+            want = explicit if explicit is not None else (style.enabled and has_caps)
+            if style.enabled and explicit is None and not has_caps:
+                without.append(c.id)       # exported without subtitles because none were generated for them
+            rows += [Export(candidate_id=c.id, kind=k, start=c.start, end=c.end, subtitles=want) for k in kinds]
+        s.add_all(rows)
+        s.commit()
+        made = [(e.id, e.candidate_id, e.kind) for e in rows]
+    out = [{"export_id": eid, "candidate_id": cid, "kind": kind,
+            "job_id": jobs.enqueue("export", asset_id, {"export_id": eid})} for eid, cid, kind in made]
+    return {"count": len(out), "exports": out, "without_subtitles": without}
+
+
+@app.get("/api/assets/{asset_id}/exports.zip")
+def exports_zip(asset_id: str, kind: str | None = None, ids: str | None = None):
+    """Download the newest finished export of each clip (optionally one format / selected clips) as one zip."""
+    if kind is not None and kind not in EXPORT_KINDS:
+        raise HTTPException(400, "kind must be vertical or original")
+    only = {i for i in (ids or "").split(",") if i} or None
+    with session() as s:
+        a = _get_asset(s, asset_id)
+        cands = s.query(Candidate).filter_by(asset_id=asset_id).order_by(Candidate.start).all()
+        order = {c.id: n for n, c in enumerate(cands, 1)}
+        rows = s.query(Export).filter(Export.candidate_id.in_(list(order) or [""]), Export.status == "done") \
+            .order_by(Export.created_at.desc()).all()
+        newest: dict[tuple[str, str], Export] = {}
+        for e in rows:
+            if (kind and e.kind != kind) or (only and e.candidate_id not in only) or not e.key:
+                continue
+            newest.setdefault((e.candidate_id, e.kind), e)       # rows are newest first
+        picks = sorted(newest.values(), key=lambda e: (order[e.candidate_id], e.kind))
+        files = [(f"clip-{order[e.candidate_id]:02d}-{e.kind}.mp4", e.key) for e in picks]
+        title = re.sub(r"[^A-Za-z0-9]+", "-", a.name).strip("-")[:50] or "clips"
+    if not files:
+        raise HTTPException(404, "no finished exports to download yet")
+    st = get_storage()
+    tmp_dir = get_settings().data_dir / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(suffix=".zip", dir=tmp_dir)
+    os.close(fd)
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as z:      # mp4 is already compressed: store, don't deflate
+        for name, key in files:
+            z.write(st.local_path(key), name)
+    return FileResponse(tmp, media_type="application/zip", filename=f"{title}-clips.zip",
+                        background=BackgroundTask(os.unlink, tmp))
 
 
 @app.get("/api/candidates/{cid}/exports")

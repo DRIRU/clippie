@@ -102,6 +102,9 @@ def test_full_flow(client, video):
     assert client.patch(f"/api/candidates/{cid}", json={"start": 40, "end": 10}).status_code == 400
     assert client.post(f"/api/candidates/{cid}/approve").json()["status"] == "approved"
     exps = client.post(f"/api/candidates/{cid}/export").json()
+    assert [e["kind"] for e in exps] == ["vertical"]                      # one format by default
+    exps += client.post(f"/api/candidates/{cid}/export", json={"kinds": ["original"]}).json()
+    assert client.post(f"/api/candidates/{cid}/export", json={"kinds": ["sideways"]}).status_code == 400
     assert len(exps) == 2
     for e in exps:
         assert wait_job(client, e["job_id"])["status"] == "done"

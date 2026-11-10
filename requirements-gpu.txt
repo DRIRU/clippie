@@ -1,0 +1,4 @@
+# Optional: lets faster-whisper (subtitles) run on an NVIDIA GPU. About 1 GB.
+# Windows: clippie finds these automatically. Linux: install CUDA 12 + cuDNN 9 system-wide instead.
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
