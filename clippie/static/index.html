@@ -29,10 +29,11 @@
   .brand b { color:var(--accent) }
   .tag { color:var(--muted); font-size:12px; padding-left:12px; border-left:1px solid var(--border) }
 
-  main { max-width:1360px; margin:auto; padding:20px; display:grid; grid-template-columns:360px minmax(0,1fr); gap:20px; align-items:start }
+  main { max-width:1360px; margin:auto; padding:20px; display:grid; grid-template-columns:minmax(300px,360px) minmax(0,1fr); gap:20px; align-items:start }
   @media (max-width:960px){ main{ grid-template-columns:1fr } }
   main > * { min-width:0 }
-  .stack { display:grid; gap:16px }
+  .stack { display:grid; grid-template-columns:minmax(0,1fr); gap:16px }
+  .card { min-width:0 }
   .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow) }
   .card-h { padding:14px 16px 0; font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted) }
   .card-b { padding:14px 16px 16px }
@@ -76,6 +77,7 @@
   .asset:hover { background:var(--surface-2) }
   .asset.sel { background:var(--accent-soft); border-color:var(--accent) }
   .thumb { width:96px; height:54px; border-radius:6px; object-fit:cover; background:var(--surface-2); flex:none }
+  .asset > div { min-width:0 }
   .asset .t { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
   .meter { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin-top:6px }
   .meter > i { display:block; height:100%; background:var(--accent); transition:width .3s }
@@ -84,7 +86,7 @@
   .empty h3 { margin:0 0 6px; color:var(--text); font-size:16px }
 
   .detail-h { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; padding:16px }
-  .detail-h h2 { margin:0; font-size:18px; letter-spacing:-.01em; overflow-wrap:anywhere }
+  .detail-h h2 { margin:0; font-size:18px; letter-spacing:-.01em; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
   .detail-h .sp { flex:1; min-width:min(200px,100%) }
   .actions { display:flex; gap:8px; flex-wrap:wrap }
   .settings { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; padding:0 16px 16px }
@@ -208,7 +210,7 @@ async function loadAssets() {
     box.append(el('div', { class: 'asset' + (selected === a.id ? ' sel' : ''), onclick: () => select(a.id) },
       el('img', { class: 'thumb', ...(a.thumb ? { src: a.thumb } : {}) }),
       el('div', { style: 'flex:1;min-width:0' },
-        el('div', { class: 't' }, a.name),
+        el('div', { class: 't', title: a.name }, a.name),
         el('div', { class: 'muted' }, meta),
         j ? el('div', { style: 'margin-top:5px;display:flex;gap:6px;align-items:center' }, chip(j.status), el('span', { class: 'muted' }, j.kind + (j.stage && busy ? ' · ' + j.stage : ''))) : null,
         busy ? el('div', { class: 'meter' }, el('i', { style: `width:${(j.progress || 0) * 100}%` })) : null)));
@@ -243,7 +245,7 @@ async function refresh() {
 
   const header = el('div', { class: 'card' },
     el('div', { class: 'detail-h' },
-      el('div', { class: 'sp' }, el('h2', {}, a.name),
+      el('div', { class: 'sp' }, el('h2', { title: a.name }, a.name),
         el('div', { class: 'muted', style: 'margin-top:4px' }, a.meta.duration ? `${fmt(a.meta.duration)} · ${a.meta.width}x${a.meta.height} · ${Math.round(a.meta.fps)} fps` : a.status)),
       el('div', { class: 'actions' },
         vlmEnabled ? el('button', { class: 'btn secondary', disabled: a.status !== 'ready' || busy || !cands.length, title: 'Ask the vision model to check each candidate', onclick: async () => { try { await post(`/assets/${a.id}/verify`, { force: true }); refresh(); } catch (x) { toast(x.message, true) } } }, 'Verify with AI') : null,

@@ -365,4 +365,13 @@ def files(key: str):
     return FileResponse(p)
 
 
-app.mount("/", StaticFiles(directory=STATIC, html=True), name="ui")
+class NoCacheStatic(StaticFiles):
+    """Always revalidate the UI so edits show up on a normal reload."""
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
+app.mount("/", NoCacheStatic(directory=STATIC, html=True), name="ui")
