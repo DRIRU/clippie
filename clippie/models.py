@@ -75,6 +75,7 @@ class Candidate(Base):
     score: Mapped[float] = mapped_column(Float)
     score_breakdown: Mapped[dict] = mapped_column(JSON, default=dict)
     event_types: Mapped[list] = mapped_column(JSON, default=list)
+    verification: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # VLM verdict, see vlm.py
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|approved|rejected
     manual: Mapped[bool] = mapped_column(Boolean, default=False)
 

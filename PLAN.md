@@ -54,7 +54,7 @@ Added scope for both modes: the `StorageBackend` interface with both implementat
 - YOLO only if OCR alone isn't enough, and only after the licensing decision.
 - **Exit check:** precision and recall on that game's labelled footage, written down. Add a second game only if these numbers are acceptable.
 
-## Phase 5: Qwen verification and scoring (3-4 days)
+## Phase 5: Qwen verification and scoring (3-4 days) — built, not yet run against a real Qwen endpoint
 - Extract selected frames per candidate. Never send whole VODs.
 - Targeted prompt through the existing vLLM endpoint, with "unknown" as a valid answer.
 - Score fusion with the initial weights, each component stored separately. Detector timestamps stay authoritative for boundaries.

@@ -31,6 +31,7 @@
 
   main { max-width:1360px; margin:auto; padding:20px; display:grid; grid-template-columns:360px minmax(0,1fr); gap:20px; align-items:start }
   @media (max-width:960px){ main{ grid-template-columns:1fr } }
+  main > * { min-width:0 }
   .stack { display:grid; gap:16px }
   .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow) }
   .card-h { padding:14px 16px 0; font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted) }
@@ -84,15 +85,15 @@
 
   .detail-h { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; padding:16px }
   .detail-h h2 { margin:0; font-size:18px; letter-spacing:-.01em; overflow-wrap:anywhere }
-  .detail-h .sp { flex:1; min-width:200px }
-  .actions { display:flex; gap:8px }
+  .detail-h .sp { flex:1; min-width:min(200px,100%) }
+  .actions { display:flex; gap:8px; flex-wrap:wrap }
   .settings { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; padding:0 16px 16px }
   .settings .field { margin:0 }
   .banner { margin:0 16px 16px; padding:10px 12px; border-radius:8px; background:var(--bad-soft); color:var(--bad); display:flex; gap:12px; align-items:center; justify-content:space-between }
 
   .list-h { display:flex; align-items:center; justify-content:space-between; margin:20px 2px 10px }
   .list-h h3 { margin:0; font-size:15px }
-  .cands { display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)) }
+  .cands { display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(min(380px,100%),1fr)) }
   @media (max-width:520px){ .cands { grid-template-columns:1fr } }
   .cand { overflow:hidden; border-left:3px solid var(--border) }
   .cand.approved { border-left-color:var(--ok) } .cand.rejected { border-left-color:var(--bad); opacity:.7 }
@@ -109,6 +110,9 @@
   .trim { display:flex; align-items:center; gap:8px; flex-wrap:wrap }
   .trim span { font-size:12px; color:var(--muted); font-weight:600 }
   .btns { display:flex; gap:8px; flex-wrap:wrap }
+  .ai { border:1px solid var(--border); border-radius:8px; padding:9px 11px; background:var(--surface-2); font-size:13px; display:grid; gap:4px }
+  .ai .h { display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+  .ai .why { color:var(--muted) }
   .exports { display:grid; gap:4px; font-size:13px }
   .exports div { display:flex; gap:8px; align-items:center }
   a { color:var(--accent); font-weight:600; text-decoration:none } a:hover { text-decoration:underline }
@@ -144,7 +148,7 @@
 </main>
 <script>
 const $ = id => document.getElementById(id);
-let selected = null, profiles = [], mode = 'link', sortBy = 'time';
+let selected = null, profiles = [], mode = 'link', sortBy = 'time', vlmEnabled = false;
 
 function el(tag, props = {}, ...kids) {
   const e = document.createElement(tag);
@@ -242,6 +246,7 @@ async function refresh() {
       el('div', { class: 'sp' }, el('h2', {}, a.name),
         el('div', { class: 'muted', style: 'margin-top:4px' }, a.meta.duration ? `${fmt(a.meta.duration)} · ${a.meta.width}x${a.meta.height} · ${Math.round(a.meta.fps)} fps` : a.status)),
       el('div', { class: 'actions' },
+        vlmEnabled ? el('button', { class: 'btn secondary', disabled: a.status !== 'ready' || busy || !cands.length, title: 'Ask the vision model to check each candidate', onclick: async () => { try { await post(`/assets/${a.id}/verify`, { force: true }); refresh(); } catch (x) { toast(x.message, true) } } }, 'Verify with AI') : null,
         el('button', { class: 'btn secondary', disabled: a.status !== 'ready' || busy, title: 'Recompute all signals from scratch', onclick: async () => { await post(`/assets/${a.id}/analyze`, { force: true }); refresh(); } }, 'Re-analyze'),
         el('button', { class: 'btn', disabled: a.status !== 'ready' || busy, onclick: async () => { await post(`/assets/${a.id}/analyze`, { force: false }); refresh(); } }, 'Analyze'))),
     j && j.status === 'failed' ? el('div', { class: 'banner' }, el('span', {}, j.error || 'The last job failed.'),
@@ -263,6 +268,16 @@ function signal(name, value, game) {
   if (value == null) return null;
   return el('div', { class: 'sig' + (game ? ' game' : '') }, el('span', {}, name),
     el('div', { class: 'meter' }, el('i', { style: `width:${Math.min(1, value) * 100}%` })), el('span', {}, value.toFixed(2)));
+}
+
+function aiBlock(v) {
+  if (!v) return null;
+  const map = { confirmed: ['AI confirmed', 'approved'], rejected: ['AI: not a highlight', 'rejected'], unknown: ['AI unsure', 'queued'], error: ['AI error', 'failed'] };
+  const [text, cls] = map[v.verdict] || [v.verdict, ''];
+  return el('div', { class: 'ai' },
+    el('div', { class: 'h' }, chip(text, cls), v.event && v.event !== 'none' ? chip(label(v.event), 'event') : null,
+      el('span', { class: 'muted' }, `confidence ${Number(v.confidence || 0).toFixed(2)}`)),
+    v.evidence ? el('div', { class: 'why' }, v.evidence) : null);
 }
 
 function candCard(a, c) {
@@ -289,6 +304,7 @@ function candCard(a, c) {
       el('div', { class: 'sigs' },
         signal('Game event', bd.game_event, true), signal('Significance', bd.event_significance, true),
         signal('Audio', bd.audio_excitement), signal('Motion', bd.visual_intensity), signal('Scene cuts', bd.scene_change)),
+      aiBlock(c.verification),
       el('div', { class: 'trim' }, el('span', {}, 'Start'), s, el('span', {}, 'End'), e,
         el('button', { class: 'btn secondary sm', onclick: async () => { try { await patch(`/candidates/${c.id}`, { start: +s.value, end: +e.value }); v.src = `${a.video}#t=${s.value},${e.value}`; toast('Trim saved.'); } catch (x) { toast(x.message, true) } } }, 'Save trim')),
       el('div', { class: 'btns' },
@@ -299,7 +315,8 @@ function candCard(a, c) {
 }
 
 // ---------- boot ----------
-api('/game-profiles').then(p => {
+Promise.all([api('/health').catch(() => ({})), api('/game-profiles')]).then(([h, p]) => {
+  vlmEnabled = !!h.vlm_enabled;
   profiles = p;
   $('impGame').replaceChildren(...p.map(x => el('option', { value: x.id }, x.name)));
   const sync = () => { const pr = profiles.find(x => x.id === $('impGame').value); $('impNameWrap').style.display = pr && pr.needs_player_name ? '' : 'none'; };

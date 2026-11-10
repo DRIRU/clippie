@@ -6,7 +6,7 @@ import numpy as np
 import hashlib
 import json
 
-from . import jobs, media, rendering
+from . import jobs, media, rendering, vlm
 from .detection import ocr
 from .profiles import registry
 from .config import get_settings
@@ -130,6 +130,42 @@ def analyze(job_id, asset_id, params, progress):
             s.add(Candidate(asset_id=asset_id, start=c.start, end=c.end, peak=c.peak, score=c.score,
                             score_breakdown=c.breakdown, event_types=c.event_types))
         s.commit()
+    if vlm.enabled() and cfg.auto_verify and cands:
+        jobs.enqueue("verify", asset_id)
+
+
+@jobs.handler("verify")
+def verify(job_id, asset_id, params, progress):
+    """Send a few frames per candidate to the VLM. Idempotent: already-verified candidates are
+    skipped unless force=True, so a restart resumes where it stopped."""
+    st, cfg = get_storage(), get_settings()
+    client = vlm.get_client()
+    force = bool(params.get("force"))
+    with session() as s:
+        asset = s.get(MediaAsset, asset_id)
+        src = st.local_path(asset.source_key)
+        game_name = registry.get(asset.game).name if asset.game != "generic" else "a video game"
+        ids = [c.id for c in s.query(Candidate).filter_by(asset_id=asset_id).order_by(Candidate.start).all()
+               if c.status != "rejected" and (force or not c.verification)]
+    for n, cid in enumerate(ids):
+        progress("verifying", n / max(1, len(ids)))
+        with session() as s:
+            c = s.get(Candidate, cid)
+            start, end, peak, types = c.start, c.end, c.peak, list(c.event_types or [])
+        frames = []
+        for i, t in enumerate(vlm.sample_times(start, end, peak, cfg.vlm_frames)):
+            out = st.new_path(f"frames/{cid}/{i}.jpg")
+            vlm.extract_frame(src, t, out)
+            frames.append(out.read_bytes())
+        result = client.verify(game_name, types, frames)
+        with session() as s:
+            c = s.get(Candidate, cid)
+            bd = dict(c.score_breakdown or {})
+            base = bd.setdefault("detector_score", c.score)
+            c.score_breakdown = bd
+            c.verification = result
+            c.score = vlm.fuse_score(base, result)
+            s.commit()
 
 
 @jobs.handler("export")

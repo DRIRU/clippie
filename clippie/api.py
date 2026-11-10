@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import jobs, media, pipeline  # noqa: F401  (pipeline registers handlers)
+from . import jobs, media, pipeline, vlm  # noqa: F401  (pipeline registers handlers)
 from .config import get_settings
 from .db import init_db, session
 from .models import Candidate, Export, GameEvent, Job, MediaAsset
@@ -50,6 +50,7 @@ def _job(j: Job) -> dict:
 def _cand(c: Candidate) -> dict:
     return {"id": c.id, "asset_id": c.asset_id, "start": c.start, "end": c.end, "peak": c.peak,
             "score": c.score, "score_breakdown": c.score_breakdown, "event_types": c.event_types,
+            "verification": c.verification,
             "status": c.status, "manual": c.manual}
 
 
@@ -62,7 +63,8 @@ def _export(e: Export) -> dict:
 @app.get("/api/health")
 def health():
     cfg = get_settings()
-    return {"ok": True, "db": cfg.db_url.split(":")[0], "storage": cfg.storage_backend}
+    return {"ok": True, "db": cfg.db_url.split(":")[0], "storage": cfg.storage_backend,
+            "vlm_enabled": vlm.enabled()}
 
 
 @app.get("/api/game-profiles")
@@ -189,6 +191,21 @@ def analyze(asset_id: str, body: AnalyzeBody | None = None):
     return {"job_id": jobs.enqueue("analyze", asset_id, {"force": bool(body and body.force)})}
 
 
+class VerifyBody(BaseModel):
+    force: bool = False
+
+
+@app.post("/api/assets/{asset_id}/verify")
+def verify_asset(asset_id: str, body: VerifyBody | None = None):
+    if not vlm.enabled():
+        raise HTTPException(409, "VLM verification is not configured (set CLIPPIE_VLM_BASE_URL)")
+    with session() as s:
+        a = _get_asset(s, asset_id)
+        if a.status != "ready":
+            raise HTTPException(409, "asset is not ready yet")
+    return {"job_id": jobs.enqueue("verify", asset_id, {"force": bool(body and body.force)})}
+
+
 @app.get("/api/assets/{asset_id}/events")
 def events(asset_id: str):
     with session() as s:
@@ -266,6 +283,11 @@ def patch_candidate(cid: str, body: CandidatePatch):
         start = c.start if body.start is None else body.start
         end = c.end if body.end is None else body.end
         _validate_range(start, end, s.get(MediaAsset, c.asset_id).meta.get("duration", 0))
+        if (start, end) != (c.start, c.end) and c.verification:
+            # verdict was for different frames: drop it and restore the detector score
+            bd = dict(c.score_breakdown or {})
+            c.score = bd.get("detector_score", c.score)
+            c.verification = None
         c.start, c.end = start, end
         s.commit()
         return _cand(c)

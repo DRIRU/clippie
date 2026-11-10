@@ -42,10 +42,13 @@ def _add_missing_columns():
     from sqlalchemy import inspect, text
 
     insp = inspect(_engine)
-    cols = {c["name"] for c in insp.get_columns("media_assets")}
-    if "profile_config" not in cols:
-        with _engine.begin() as conn:
-            conn.execute(text("ALTER TABLE media_assets ADD COLUMN profile_config JSON"))
+    wanted = {"media_assets": [("profile_config", "JSON")], "clip_candidates": [("verification", "JSON")]}
+    for table, cols_needed in wanted.items():
+        have = {c["name"] for c in insp.get_columns(table)}
+        for name, ctype in cols_needed:
+            if name not in have:
+                with _engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ctype}"))
 
 
 def session():
