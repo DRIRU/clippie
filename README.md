@@ -39,6 +39,7 @@ Self-hosted · local-first · no paid AI APIs
 | **Facecam layout** | For vertical exports, put your webcam in its own band on top and the gameplay below. You drag a box over your webcam on a frame of your video, and a live 9:16 preview, rendered by the same ffmpeg filter as the export, shows exactly what you will get. |
 | **One format per export** | Choose **Vertical 9:16** (1080×1920 with a blurred background, no blind centre crop) or **Horizontal** (the original aspect ratio). One is enough; your choice is remembered. |
 | **Bulk export** | Tick any clips, or leave none ticked to export every approved clip, in one click. Then download all the finished files as a single zip. |
+| **Performance log** | Every job and pipeline stage is timed and stored, with the video length it processed, the settings and the hardware. Read it on a page, as a table in the terminal, or as a CSV, so you can measure and compare speed later. |
 | **Delete anything** | Remove a video and all of its clips, exports and files. Running jobs are cancelled. |
 | **Survives restarts** | Jobs live in SQLite with progress and retry. Finished analysis stages are checkpointed and skipped on resume. |
 | **Runs anywhere** | SQLite + local folder + in-process workers. No Docker, Postgres, Redis or MinIO needed. |
@@ -152,6 +153,40 @@ CLIPPIE_VLM_BASE_URL=http://127.0.0.1:8000/v1
 
 > **Status:** checked end to end against a real vLLM Qwen2.5-VL-7B-AWQ endpoint on a synthetic clip, where it read an on-screen banner correctly, and against mocked servers in the tests. It has **not** been evaluated on real gameplay, so prompt wording and the score blend are unvalidated. With a 4096-token model context (a common vLLM default) the default settings fit; raising `--max-model-len` on the server lets you send more frames.
 
+## Performance log
+
+clippie times every job and every stage of the pipeline (download, probe, thumbnail, audio, motion, OCR, candidate scoring, preview and export rendering, transcription, AI checks) and stores the measurements in the same SQLite database, so they survive restarts and keep growing. Deleting a video does **not** delete its measurements.
+
+Each measurement records:
+
+| Field | Meaning |
+|---|---|
+| `stage` | for example `analyze.motion`, `export.render`, `captions.transcribe`; `job.<kind>` is a whole job |
+| `seconds` | wall-clock time |
+| `media_seconds` | how much video or clip it processed, which gives **x real time** (higher is faster) |
+| `concurrent` | how many jobs were running at that moment. Timings under load include contention, so compare like with like |
+| `status` | `ok`, `error` or `cancelled` |
+| `detail` | stage facts: export format and layout, resolution and fps, bytes written, model and device, GPU memory, queue wait for jobs |
+
+Every server start is a **run** that records your settings (workers, NVENC, models, fps cap) and hardware (CPU count, GPU, ffmpeg and library versions), so you can compare results from different configurations.
+
+**Ways to read it**
+
+- **In the browser:** open **Performance** in the header (`/perf.html`). Filter by time range, run and stage, group by run, video, export format and more, and download the raw events as CSV.
+- **In the terminal** (works without the server running):
+
+```bash
+.venv/Scripts/python -m tools.perf_report                          # every stage: n, mean, p50, p95, max, x real
+.venv/Scripts/python -m tools.perf_report --since 24h --stage export --group-by detail.kind
+.venv/Scripts/python -m tools.perf_report --group-by run           # compare settings across runs
+.venv/Scripts/python -m tools.perf_report --runs                   # the settings and hardware of each run
+.venv/Scripts/python -m tools.perf_report --csv events.csv         # raw events for a spreadsheet
+```
+
+- **Over HTTP:** `GET /api/perf/summary`, `/api/perf/events` (add `format=csv`) and `/api/perf/runs`, with the same filters (`since`, `run`, `asset_id`, `stage`, `status`, `group_by`).
+
+Notes: logging never interrupts processing (a failed write is only logged), turn it off with `CLIPPIE_PERF_LOG=false`, and clear it with `python -m tools.perf_report --clear --yes`. Work done by external programs such as ffmpeg is included in the wall-clock time, but CPU or memory use is not recorded, only timing, sizes, and GPU memory for transcription.
+
 ## Tests
 
 ```bash
@@ -172,6 +207,7 @@ Environment variables with the `CLIPPIE_` prefix, or the same keys in a `.env` f
 | `CLIPPIE_CANDIDATE_PADDING_BEFORE` / `_AFTER` | `8` / `12` | Seconds around each detected moment |
 | `CLIPPIE_MAX_UPLOAD_GB` / `CLIPPIE_MAX_DURATION_HOURS` | `20` / `6` | Input limits |
 | `CLIPPIE_USE_NVENC` | `false` | Use NVIDIA NVENC for exports |
+| `CLIPPIE_PERF_LOG` | `true` | Record timings of every job and stage (see Performance log) |
 | `CLIPPIE_VERTICAL_MAX_FPS` | `30` | Cap vertical exports at this frame rate when the source is faster (`0` keeps the source rate). Sources at or below the cap are never changed. |
 | `CLIPPIE_VLM_BASE_URL` | unset | OpenAI-compatible endpoint; AI verification is off when unset |
 | `CLIPPIE_VLM_MODEL` | auto | Model id; defaults to the first one the server reports |
@@ -230,6 +266,7 @@ clippie/
 ├── media.py          ffprobe, thumbnails, safe URL import (yt-dlp)
 ├── rendering.py      preview, original and vertical ffmpeg renders
 ├── layout.py         vertical layouts (blurred background, facecam on top)
+├── perf.py           performance log: timers, runs, summaries, CSV
 ├── vlm.py            vision-model verification client
 ├── captions.py       speech-to-text, caption styles, ASS subtitle output
 ├── storage.py        local storage backend (S3 planned)

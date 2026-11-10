@@ -6,7 +6,10 @@ import numpy as np
 import hashlib
 import json
 
+from urllib.parse import urlparse
+
 from . import captions as captions_mod
+from . import perf
 from . import layout as layout_mod
 from . import jobs, media, rendering, vlm
 from .detection import ocr
@@ -27,8 +30,10 @@ def import_url(job_id, asset_id, params, progress):
         url = asset.source_url
     progress("downloading", 0.0)
     outdir = st.local_path(f"sources/{asset_id}")
-    path, title = media.download_url(url, outdir, int(cfg.max_upload_gb * 1024**3),
-                                     on_progress=lambda f: progress("downloading", f))
+    with perf.timer("import.download", host=urlparse(url).hostname) as rec:
+        path, title = media.download_url(url, outdir, int(cfg.max_upload_gb * 1024**3),
+                                         on_progress=lambda f: progress("downloading", f))
+        rec["detail"]["bytes"] = path.stat().st_size
     with session() as s:
         asset = s.get(MediaAsset, asset_id)
         asset.source_key = f"sources/{asset_id}/{path.name}"
@@ -46,11 +51,17 @@ def ingest(job_id, asset_id, params, progress):
         key = asset.source_key
     progress("probing", 0.1)
     try:
-        meta = media.probe(st.local_path(key))
+        with perf.timer("ingest.probe") as rec:
+            meta = media.probe(st.local_path(key))
+            rec["media_seconds"] = meta["duration"]
+            rec["detail"].update(width=meta["width"], height=meta["height"], fps=meta["fps"],
+                                 size_bytes=meta["size_bytes"], video_codec=meta["video_codec"])
+        perf.job_note(media_seconds=meta["duration"])
         if meta["duration"] > cfg.max_duration_hours * 3600:
             raise media.MediaError(f"video longer than {cfg.max_duration_hours}h limit")
         progress("thumbnail", 0.6)
-        media.thumbnail(st.local_path(key), st.new_path(f"thumbs/{asset_id}.jpg"), min(5.0, meta["duration"] / 2))
+        with perf.timer("ingest.thumbnail"):
+            media.thumbnail(st.local_path(key), st.new_path(f"thumbs/{asset_id}.jpg"), min(5.0, meta["duration"] / 2))
     except Exception:
         with session() as s:
             s.get(MediaAsset, asset_id).status = "failed"
@@ -75,6 +86,7 @@ def analyze(job_id, asset_id, params, progress):
         src, meta, game = st.local_path(asset.source_key), dict(asset.meta), asset.game
         pcfg = dict(asset.profile_config or {})
     duration = meta["duration"]
+    perf.job_note(media_seconds=duration, game=game, width=meta.get("width"), height=meta.get("height"))
     profile = registry.get(game)
     if profile.needs_player_name and not pcfg.get("player_name"):
         raise RuntimeError(f"the {profile.name} profile needs the player's in-game name (set it on the video)")
@@ -84,11 +96,14 @@ def analyze(job_id, asset_id, params, progress):
 
     if force or not audio_ck.exists():
         progress("audio", 0.0)
-        a = signals.audio_features(src, lambda f: progress("audio", f * 0.3), duration)
+        with perf.timer("analyze.audio", media_seconds=duration, has_audio=meta.get("has_audio")):
+            a = signals.audio_features(src, lambda f: progress("audio", f * 0.3), duration)
         np.savez(audio_ck, **a)
     if force or not video_ck.exists():
         progress("motion", 0.3)
-        v = signals.video_features(src, lambda f: progress("motion", 0.3 + f * 0.25), duration)
+        with perf.timer("analyze.motion", media_seconds=duration, width=meta.get("width"), height=meta.get("height"),
+                        fps=meta.get("fps")):
+            v = signals.video_features(src, lambda f: progress("motion", 0.3 + f * 0.25), duration)
         np.savez(video_ck, **v)
 
     game_events = []
@@ -105,34 +120,40 @@ def analyze(job_id, asset_id, params, progress):
             base = 0.55 + 0.35 * n / len(names)
             if force or not ck.exists():
                 progress(f"ocr:{name}", base)
-                res = ocr.scan_region(src, meta["width"], meta["height"], region, profile.ocr_fps, backend,
-                                      on_progress=lambda f, n=n: progress(f"ocr:{names[n]}", base + f * 0.35 / len(names)),
-                                      duration=duration)
+                with perf.timer("analyze.ocr", media_seconds=duration, region=name, ocr_fps=profile.ocr_fps,
+                                backend=backend.name) as rec:
+                    res = ocr.scan_region(src, meta["width"], meta["height"], region, profile.ocr_fps, backend,
+                                          on_progress=lambda f, n=n: progress(f"ocr:{names[n]}", base + f * 0.35 / len(names)),
+                                          duration=duration)
+                    rec["detail"]["frames_with_text"] = len(res)
                 ck.write_text(json.dumps(res))
             frames[name] = json.loads(ck.read_text())
         game_events = profile.derive_events(frames, pcfg) if profile.derive_events else []
 
     progress("candidates", 0.92)
     audio, video = dict(np.load(audio_ck)), dict(np.load(video_ck))
-    events, cands = cand.build(
-        audio, video, duration,
-        pad_before=cfg.candidate_padding_before, pad_after=cfg.candidate_padding_after,
-        min_score=cfg.min_candidate_score, max_per_hour=cfg.max_candidates_per_hour,
-        game_events=game_events, significance=profile.significance,
-    )
+    with perf.timer("analyze.candidates", media_seconds=duration) as rec:
+        events, cands = cand.build(
+            audio, video, duration,
+            pad_before=cfg.candidate_padding_before, pad_after=cfg.candidate_padding_after,
+            min_score=cfg.min_candidate_score, max_per_hour=cfg.max_candidates_per_hour,
+            game_events=game_events, significance=profile.significance,
+        )
+        rec["detail"].update(candidates=len(cands), events=len(events) + len(game_events))
     events = list(events) + list(game_events)
-    with session() as s:
-        s.query(GameEvent).filter_by(asset_id=asset_id).delete()
-        # Replace auto candidates but keep anything the user created or already decided on.
-        stale = [c.id for c in s.query(Candidate).filter_by(asset_id=asset_id, manual=False, status="pending").all()]
-        s.query(Candidate).filter_by(asset_id=asset_id, manual=False, status="pending").delete()
-        for e in events:
-            s.add(GameEvent(asset_id=asset_id, game=game, event_type=e.event_type, timestamp=e.timestamp,
-                            confidence=e.confidence, source=e.source, evidence=e.evidence))
-        for c in cands:
-            s.add(Candidate(asset_id=asset_id, start=c.start, end=c.end, peak=c.peak, score=c.score,
-                            score_breakdown=c.breakdown, event_types=c.event_types))
-        s.commit()
+    with perf.timer("analyze.save", candidates=len(cands)):
+        with session() as s:
+            s.query(GameEvent).filter_by(asset_id=asset_id).delete()
+            # Replace auto candidates but keep anything the user created or already decided on.
+            stale = [c.id for c in s.query(Candidate).filter_by(asset_id=asset_id, manual=False, status="pending").all()]
+            s.query(Candidate).filter_by(asset_id=asset_id, manual=False, status="pending").delete()
+            for e in events:
+                s.add(GameEvent(asset_id=asset_id, game=game, event_type=e.event_type, timestamp=e.timestamp,
+                                confidence=e.confidence, source=e.source, evidence=e.evidence))
+            for c in cands:
+                s.add(Candidate(asset_id=asset_id, start=c.start, end=c.end, peak=c.peak, score=c.score,
+                                score_breakdown=c.breakdown, event_types=c.event_types))
+            s.commit()
     for cid in stale:  # files belonging to candidates that no longer exist
         st.delete(f"previews/{cid}.mp4")
         st.delete(f"frames/{cid}")
@@ -152,6 +173,7 @@ def preview(job_id, asset_id, params, progress):
     with session() as s:
         asset = s.get(MediaAsset, asset_id)
         src, has_audio = st.local_path(asset.source_key), asset.meta.get("has_audio", True)
+        src_h = asset.meta.get("height")
         q = s.query(Candidate).filter_by(asset_id=asset_id)
         if params.get("candidate_id"):
             q = q.filter_by(id=params["candidate_id"])
@@ -159,7 +181,9 @@ def preview(job_id, asset_id, params, progress):
     for n, (cid, start, end) in enumerate(todo):
         progress("rendering", n / max(1, len(todo)))
         key = f"previews/{cid}.mp4"
-        rendering.render(src, st.new_path(key), start, end, "preview", has_audio)
+        with perf.timer("preview.render", media_seconds=end - start, candidate_id=cid, src_height=src_h) as rec:
+            rendering.render(src, st.new_path(key), start, end, "preview", has_audio)
+            rec["detail"]["bytes"] = st.local_path(key).stat().st_size
         with session() as s:
             c = s.get(Candidate, cid)
             if c is None or (c.start, c.end) != (start, end):
@@ -185,10 +209,15 @@ def captions_job(job_id, asset_id, params, progress):
     if not todo:
         return
     progress("loading speech model", 0.0)
-    captions_mod._load_model()          # first use downloads the model; do it before the per-clip loop
+    with perf.timer("captions.load_model", model=cfg.whisper_model) as rec:
+        captions_mod._load_model()          # first use downloads the model; do it before the per-clip loop
+        rec["detail"]["device"] = getattr(captions_mod, "_model_device", None)
     for n, (cid, start, end) in enumerate(todo):
         progress("transcribing", n / len(todo))
-        res = captions_mod.transcribe(src, start, end)
+        with perf.timer("captions.transcribe", media_seconds=end - start, candidate_id=cid, model=cfg.whisper_model) as rec:
+            res = captions_mod.transcribe(src, start, end)
+            rec["detail"].update(device=getattr(captions_mod, "_model_device", None), words=len(res["words"]),
+                                 language=res["language"], gpu_mem_mb=perf.gpu_mem_used_mb())
         with session() as s:
             c = s.get(Candidate, cid)
             if c is None or (c.start, c.end) != (start, end):
@@ -217,11 +246,14 @@ def verify(job_id, asset_id, params, progress):
             c = s.get(Candidate, cid)
             start, end, peak, types = c.start, c.end, c.peak, list(c.event_types or [])
         frames = []
-        for i, t in enumerate(vlm.sample_times(start, end, peak, cfg.vlm_frames)):
-            out = st.new_path(f"frames/{cid}/{i}.jpg")
-            vlm.extract_frame(src, t, out)
-            frames.append(out.read_bytes())
-        result = client.verify(game_name, types, frames)
+        with perf.timer("verify.frames", candidate_id=cid, frames=cfg.vlm_frames):
+            for i, t in enumerate(vlm.sample_times(start, end, peak, cfg.vlm_frames)):
+                out = st.new_path(f"frames/{cid}/{i}.jpg")
+                vlm.extract_frame(src, t, out)
+                frames.append(out.read_bytes())
+        with perf.timer("verify.vlm", candidate_id=cid, frames=len(frames)) as rec:
+            result = client.verify(game_name, types, frames)
+            rec["detail"].update(model=client.model, verdict=result.get("verdict"))
         with session() as s:
             c = s.get(Candidate, cid)
             bd = dict(c.score_breakdown or {})
@@ -246,6 +278,7 @@ def export(job_id, asset_id, params, progress):
         style_d, caps, layout_d = asset.caption_style, cd.captions, asset.layout
         w, h = asset.meta.get("width", 1280), asset.meta.get("height", 720)
         src_fps = asset.meta.get("fps")
+        cand_id = cd.id
         ex.status = "running"
         s.commit()
     key = f"exports/{export_id}/{kind}.mp4"
@@ -259,7 +292,13 @@ def export(job_id, asset_id, params, progress):
             ass = captions_mod.build_ass(caps["words"], captions_mod.CaptionStyle.from_dict(style_d), out_w, out_h)
         vf = (layout_mod.vertical_filter(layout_mod.Layout.from_dict(layout_d), w, h, get_settings().vertical_max_fps, src_fps)
               if kind == "vertical" else None)
-        rendering.render(src, st.new_path(key), start, end, kind, has_audio, ass_text=ass, vfilter=vf)
+        lay_mode = layout_mod.Layout.from_dict(layout_d).mode if kind == "vertical" else None
+        with perf.timer("export.render", media_seconds=end - start, candidate_id=cand_id, kind=kind,
+                        subtitles=want_subs, layout=lay_mode, src_w=w, src_h=h, src_fps=src_fps,
+                        fps_cap=get_settings().vertical_max_fps if kind == "vertical" else None,
+                        nvenc=get_settings().use_nvenc) as rec:
+            rendering.render(src, st.new_path(key), start, end, kind, has_audio, ass_text=ass, vfilter=vf)
+            rec["detail"]["bytes"] = st.local_path(key).stat().st_size
     except Exception:
         with session() as s:
             s.get(Export, export_id).status = "failed"

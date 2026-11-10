@@ -97,3 +97,29 @@ class Export(Base):
     end: Mapped[float] = mapped_column(Float)
     subtitles: Mapped[bool] = mapped_column(Boolean, default=False)  # subtitles burned into this export
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PerfRun(Base):
+    """One server start: the settings and hardware the timings were taken under (for comparing later)."""
+    __tablename__ = "perf_runs"
+    run_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    host: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class PerfEvent(Base):
+    """One timed stage. Deliberately has no foreign keys, so deleting a video keeps its measurements."""
+    __tablename__ = "perf_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(36), index=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
+    stage: Mapped[str] = mapped_column(String(60), index=True)
+    job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    asset_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    candidate_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    seconds: Mapped[float] = mapped_column(Float)
+    media_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)  # video/clip length processed
+    status: Mapped[str] = mapped_column(String(12), default="ok")              # ok | error | cancelled
+    concurrent: Mapped[int] = mapped_column(Integer, default=0)                # jobs running at that moment
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)

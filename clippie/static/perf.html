@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>clippie - performance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0e1015; --bar:#12151c; --surface:#151821; --surface-2:#1c202b; --raised:#262b39; --border:#232834; --border-2:#2b3140;
+          --text:#e9ebf1; --text-2:#b4bccb; --muted:#98a1b3; --accent:#5a60ee; --accent-text:#aeb3ff; --ok:#5fd6a4; --bad:#ff8d80; }
+  * { box-sizing:border-box }
+  html { color-scheme: dark }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased }
+  header { height:56px; padding:0 28px; display:flex; align-items:center; gap:14px; background:var(--bar); border-bottom:1px solid var(--border) }
+  .brand { font-size:18px; font-weight:700; color:var(--text); text-decoration:none } .brand b { color:#8f95ff }
+  .tag { color:var(--muted); font-size:13px; padding-left:14px; border-left:1px solid var(--border) }
+  a.back { margin-left:auto; color:var(--accent-text); font-weight:600; text-decoration:none; font-size:13px }
+  main { max-width:1300px; margin:auto; padding:24px 28px; display:grid; gap:16px }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px; min-width:0 }
+  .filters { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end }
+  label { display:grid; gap:6px; font-size:12px; font-weight:600; color:var(--text-2) }
+  select,input { font:inherit; font-weight:400; height:40px; padding:0 12px; background:var(--bg); color:var(--text); border:1px solid var(--border-2); border-radius:9px; min-width:160px }
+  select { appearance:none; -webkit-appearance:none; padding-right:36px; cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2398a1b3' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 12px center }
+  select option { background:#151821 }
+  input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible { outline:2px solid #8f95ff; outline-offset:2px }
+  .btn { height:40px; padding:0 16px; border-radius:9px; border:1px solid var(--border-2); background:transparent; color:var(--text); font:inherit; font-weight:600; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; text-decoration:none }
+  .btn.primary { background:var(--accent); border-color:transparent; color:#fff } .btn:hover { background:var(--surface-2) } .btn.primary:hover { background:#6a70f5 }
+  .scroll { overflow-x:auto }
+  table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums }
+  th,td { padding:9px 12px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--border) }
+  th { font-size:12px; color:var(--muted); font-weight:600; position:sticky; top:0; background:var(--surface) }
+  th:first-child,td:first-child { text-align:left } td.g { text-align:left; color:var(--text-2) }
+  td.stage { font-weight:600 } tr:hover td { background:var(--surface-2) }
+  .bad { color:var(--bad); font-weight:600 } .dim { color:var(--muted) }
+  .empty { padding:30px; text-align:center; color:var(--muted) }
+  details summary { cursor:pointer; font-weight:600; padding:2px 0 } details pre { margin:10px 0 0; padding:12px; background:var(--bg); border:1px solid var(--border); border-radius:9px; overflow:auto; font-size:12px; color:var(--text-2) }
+  .note { color:var(--muted); font-size:12.5px }
+  h2 { margin:0 0 12px; font-size:12px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--muted) }
+</style>
+</head>
+<body>
+<header><a class="brand" href="/">clip<b>pie</b></a><span class="tag">Performance log</span><a class="back" href="/">Back to the app</a></header>
+<main>
+  <div class="card">
+    <div class="filters">
+      <label>Time range<select id="since"><option value="1h">Last hour</option><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="all">All time</option></select></label>
+      <label>Run<select id="run"><option value="all">All runs</option><option value="current">This run only</option></select></label>
+      <label>Stage starts with<input id="stage" placeholder="e.g. export or analyze"></label>
+      <label>Group by<select id="group">
+        <option value="">Nothing</option><option value="run">Run (compare settings)</option><option value="asset">Video</option>
+        <option value="detail.kind">Export format (detail.kind)</option><option value="detail.region">OCR region</option>
+        <option value="detail.device">Device (detail.device)</option><option value="detail.layout">Layout</option></select></label>
+      <button class="btn primary" id="refresh">Refresh</button>
+      <a class="btn" id="csv" href="#">Download events (CSV)</a>
+    </div>
+  </div>
+  <div class="card scroll"><h2>Timings per stage</h2><div id="out"></div>
+    <p class="note">n = timings recorded. err = failed or cancelled. Seconds are wall-clock time. <b>x real</b> = seconds of video (or clip) processed per second of work, so higher is faster. <b>conc</b> = average number of jobs running at the same time, which matters when comparing runs. Percentiles are over successful timings.</p></div>
+  <div class="card"><h2>Runs</h2><div id="runs"></div></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const n = (v, d = 2) => v == null ? '-' : Number(v).toFixed(d);
+function params() {
+  const q = new URLSearchParams();
+  if ($('since').value !== 'all') q.set('since', $('since').value);
+  if ($('run').value !== 'all') q.set('run', $('run').value);
+  if ($('stage').value.trim()) q.set('stage', $('stage').value.trim());
+  return q;
+}
+function cell(text, cls) { const td = document.createElement('td'); td.textContent = text; if (cls) td.className = cls; return td; }
+async function load() {
+  const q = params(); const gb = $('group').value; const sq = new URLSearchParams(q); if (gb) sq.set('group_by', gb);
+  $('csv').href = '/api/perf/events?format=csv&' + q;
+  const r = await fetch('/api/perf/summary?' + sq);
+  const out = $('out');
+  if (!r.ok) { out.replaceChildren(Object.assign(document.createElement('div'), { className: 'empty', textContent: (await r.json()).detail || 'Could not load.' })); return; }
+  const rows = (await r.json()).rows;
+  if (!rows.length) { out.replaceChildren(Object.assign(document.createElement('div'), { className: 'empty', textContent: 'No measurements yet for this filter. Import or analyze a video, then refresh.' })); return; }
+  const t = document.createElement('table'), head = document.createElement('tr');
+  ['Stage', ...(gb ? [gb] : []), 'n', 'err', 'mean s', 'p50 s', 'p95 s', 'max s', 'total s', 'x real', 'conc'].forEach(h => { const th = document.createElement('th'); th.textContent = h; head.append(th); });
+  t.append(head);
+  for (const x of rows) {
+    const tr = document.createElement('tr');
+    tr.append(cell(x.stage, 'stage'));
+    if (gb) tr.append(cell(x.group[gb] == null ? '-' : String(x.group[gb]).slice(0, 36), 'g'));
+    tr.append(cell(x.n), cell(x.errors, x.errors ? 'bad' : 'dim'), cell(n(x.mean_s, 3)), cell(n(x.p50_s, 3)), cell(n(x.p95_s, 3)), cell(n(x.max_s, 3)), cell(n(x.total_s, 1)), cell(n(x.realtime_x, 1)), cell(n(x.mean_concurrent, 1)));
+    t.append(tr);
+  }
+  out.replaceChildren(t);
+}
+async function loadRuns() {
+  const runs = (await (await fetch('/api/perf/runs')).json()).runs;
+  const sel = $('run'), keep = sel.value;
+  sel.replaceChildren(...[['all', 'All runs'], ['current', 'This run only'], ...runs.map(r => [r.run_id, `${new Date(r.started_at).toLocaleString()} - ${r.config.max_workers} workers${r.config.use_nvenc ? ', NVENC' : ''} (${r.events} events)`])]
+    .map(([v, t]) => Object.assign(document.createElement('option'), { value: v, textContent: t })));
+  sel.value = [...sel.options].some(o => o.value === keep) ? keep : 'all';
+  const box = $('runs');
+  if (!runs.length) { box.textContent = 'No runs yet.'; return; }
+  box.replaceChildren(...runs.map(r => {
+    const d = document.createElement('details'), s = document.createElement('summary'), pre = document.createElement('pre');
+    s.textContent = `${new Date(r.started_at).toLocaleString()}${r.current ? '  (current)' : ''}  -  ${r.events} events  -  ${r.config.max_workers} workers`;
+    pre.textContent = JSON.stringify({ host: r.host, config: r.config, run_id: r.run_id }, null, 2);
+    d.append(s, pre); return d;
+  }));
+}
+['since', 'run', 'group'].forEach(id => $(id).onchange = load); $('stage').oninput = () => { clearTimeout(window._t); window._t = setTimeout(load, 300); };
+$('refresh').onclick = async () => { await loadRuns(); await load(); };
+loadRuns().then(load);
+</script>
+</body>
+</html>

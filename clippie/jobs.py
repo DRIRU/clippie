@@ -12,6 +12,7 @@ from typing import Callable
 
 from sqlalchemy.orm.exc import StaleDataError
 
+from . import perf
 from .config import get_settings
 from .db import session
 from .models import Job
@@ -81,10 +82,22 @@ def _run(job_id: str) -> None:
             if not j or j.status not in ("queued", "running"):
                 return
             kind, asset_id, params = j.kind, j.asset_id, dict(j.params or {})
+            queued_since = j.updated_at or j.created_at
             j.status, j.attempts = "running", (j.attempts or 0) + 1
+            attempts = j.attempts
             s.commit()
     except StaleDataError:
         return
+
+    started = time.perf_counter()
+    perf_status = "ok"
+    try:
+        qs = queued_since if queued_since.tzinfo else queued_since.replace(tzinfo=timezone.utc)
+        queue_wait = max(0.0, (datetime.now(timezone.utc) - qs).total_seconds())
+    except Exception:  # noqa: BLE001
+        queue_wait = None
+    perf.set_context(job_id=job_id, asset_id=asset_id)
+    perf.job_started()
 
     last_check = [0.0]
 
@@ -103,14 +116,23 @@ def _run(job_id: str) -> None:
         _handlers[kind](job_id, asset_id, params, progress)
         update(job_id, status="done", progress=1.0, stage="done")
     except Cancelled:
+        perf_status = "cancelled"
         log.info("job %s (%s) cancelled: video was deleted", job_id, kind)
     except Exception as e:  # noqa: BLE001 - job boundary
         if asset_id and not _asset_exists(asset_id):
+            perf_status = "cancelled"
             log.info("job %s (%s) stopped: video was deleted", job_id, kind)
         else:
+            perf_status = "error"
             log.error("job %s (%s) failed: %s\n%s", job_id, kind, e, traceback.format_exc())
             update(job_id, status="failed", error=str(e)[:1000])
     finally:
+        notes = perf.job_notes()
+        perf.record(f"job.{kind}", time.perf_counter() - started, media_seconds=notes.pop("media_seconds", None),
+                    status=perf_status, job_id=job_id, asset_id=asset_id,
+                    detail={"queue_wait_s": None if queue_wait is None else round(queue_wait, 3), "attempt": attempts, **notes})
+        perf.job_finished()
+        perf.clear_context()
         if asset_id and not _asset_exists(asset_id):
             _purge_files(asset_id)  # the job may have written files after the delete ran
 

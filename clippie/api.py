@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from . import captions, jobs, library, media, pipeline, vlm  # noqa: F401  (pipeline registers handlers)
 from . import layout as layout_mod
+from . import perf
 from .config import get_settings
 from .db import init_db, session
 from .models import Candidate, Export, GameEvent, Job, MediaAsset
@@ -30,6 +31,7 @@ STATIC = Path(__file__).parent / "static"
 async def lifespan(app: FastAPI):
     init_db()
     get_storage()
+    perf.start_run()
     n = jobs.resume_unfinished()
     if n:
         print(f"[clippie] resumed {n} unfinished job(s)")
@@ -348,7 +350,9 @@ def layout_preview(asset_id: str, body: LayoutPreviewBody | None = None):
     graph = layout_mod.vertical_filter(lay, meta.get("width", 1280), meta.get("height", 720),
                                        get_settings().vertical_max_fps, meta.get("fps"))
     graph = graph.replace("format=yuv420p[v]", "scale=540:960,format=yuv420p[v]")    # small, fast preview
-    return Response(_still(src, tt, graph=graph), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+    with perf.timer("api.layout_preview", asset_id=asset_id, layout=lay.mode):
+        data = _still(src, tt, graph=graph)
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/assets/{asset_id}/events")
@@ -586,9 +590,11 @@ def exports_zip(asset_id: str, kind: str | None = None, ids: str | None = None):
     tmp_dir.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(suffix=".zip", dir=tmp_dir)
     os.close(fd)
-    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as z:      # mp4 is already compressed: store, don't deflate
-        for name, key in files:
-            z.write(st.local_path(key), name)
+    with perf.timer("api.exports_zip", asset_id=asset_id, files=len(files)) as rec:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as z:      # mp4 is already compressed: store, don't deflate
+            for name, key in files:
+                z.write(st.local_path(key), name)
+        rec["detail"]["bytes"] = os.path.getsize(tmp)
     return FileResponse(tmp, media_type="application/zip", filename=f"{title}-clips.zip",
                         background=BackgroundTask(os.unlink, tmp))
 
@@ -622,6 +628,45 @@ def files(key: str):
     if not p.is_file():
         raise HTTPException(404)
     return FileResponse(p)
+
+
+
+# ---------- performance log ----------
+def _perf_filters(since, until, run, asset_id, stage, status) -> dict:
+    try:
+        return {"since": perf.parse_when(since), "until": perf.parse_when(until), "run": run, "asset_id": asset_id,
+                "stage": stage, "status": status}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/perf/summary")
+def perf_summary(since: str | None = None, until: str | None = None, run: str | None = None, asset_id: str | None = None,
+                 stage: str | None = None, status: str | None = None, group_by: str | None = None):
+    """Timing statistics per stage. since: 30m, 24h, 7d or an ISO date. run: all | current | <run id>.
+    stage: a name or prefix such as export. group_by: comma list of run, asset, detail.<name>."""
+    gb = [g.strip() for g in (group_by or "").split(",") if g.strip()]
+    try:
+        return {"rows": perf.summary(gb, **_perf_filters(since, until, run, asset_id, stage, status)), "group_by": gb}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/perf/events")
+def perf_events(since: str | None = None, until: str | None = None, run: str | None = None, asset_id: str | None = None,
+                stage: str | None = None, status: str | None = None, limit: int = 200, offset: int = 0, format: str = "json"):
+    f = _perf_filters(since, until, run, asset_id, stage, status)
+    if format == "csv":
+        return Response(perf.events_csv(**f), media_type="text/csv",
+                        headers={"Content-Disposition": 'attachment; filename="clippie-performance.csv"'})
+    if format != "json":
+        raise HTTPException(400, "format must be json or csv")
+    return {"events": perf.events(limit=max(1, min(limit, 5000)), offset=max(0, offset), **f)}
+
+
+@app.get("/api/perf/runs")
+def perf_runs():
+    return {"runs": perf.runs()}
 
 
 class NoCacheStatic(StaticFiles):

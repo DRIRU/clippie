@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     whisper_compute_type: str = "auto"
     whisper_language: str | None = None   # None = detect automatically
     auto_captions: bool = False       # transcribe every new video without being asked
+    perf_log: bool = True             # record timings of every pipeline stage (see perf.py, /perf.html)
     # Detection tuning
     min_candidate_score: float = 0.35
     max_candidates_per_hour: int = 40

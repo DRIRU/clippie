@@ -22,6 +22,7 @@
   .brand { font-size:18px; font-weight:700; letter-spacing:-.01em }
   .brand b { color:var(--accent-ring); font-weight:700 }
   .tag { color:var(--muted); font-size:13px; padding-left:14px; border-left:1px solid var(--border) }
+  .navlink { margin-left:auto; color:var(--muted); font-size:13px; font-weight:600; text-decoration:none } .navlink:hover { color:var(--text); text-decoration:none }
 
   main { max-width:1500px; margin:auto; padding:24px 28px; display:grid; grid-template-columns:minmax(300px,340px) minmax(0,1fr); gap:24px; align-items:start }
   @media (max-width:960px){ main { grid-template-columns:minmax(0,1fr); padding:16px } header { padding:0 16px } }
@@ -211,7 +212,7 @@
 </style>
 </head>
 <body>
-<header><span class="brand">clip<b>pie</b></span><span class="tag">Highlight clips from gaming video</span></header>
+<header><span class="brand">clip<b>pie</b></span><span class="tag">Highlight clips from gaming video</span><a class="navlink" href="/perf.html">Performance</a></header>
 <main>
   <aside class="stack">
     <div class="card pad">
