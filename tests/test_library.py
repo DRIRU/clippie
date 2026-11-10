@@ -105,3 +105,17 @@ def test_delete_cancels_running_job_and_cleans_up(client, video):
     # ...and nothing it wrote after the delete is left behind
     assert not media("sources", aid).exists() and not media("thumbs", f"{aid}.jpg").exists()
     assert client.get(f"/api/assets/{aid}").status_code == 404
+
+
+def test_storage_delete_waits_for_a_locked_file(tmp_path):
+    """A file still held open (e.g. by a browser streaming it) is removed once released."""
+    import threading
+    from clippie.storage import LocalStorage
+
+    st = LocalStorage(tmp_path)
+    p = st.new_path("sources/x/source.mp4")
+    p.write_bytes(b"data")
+    fh = open(p, "rb")
+    threading.Timer(0.6, fh.close).start()
+    st.delete("sources/x")                  # on Windows this needs the retry; elsewhere it succeeds at once
+    assert not (tmp_path / "sources" / "x").exists()

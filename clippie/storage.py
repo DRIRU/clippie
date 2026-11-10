@@ -7,6 +7,7 @@ NOT silently fall back from S3 to local disk (it would split data across stores)
 from __future__ import annotations
 
 import shutil
+import time
 from pathlib import Path
 from typing import BinaryIO, Protocol
 
@@ -60,12 +61,22 @@ class LocalStorage:
     def exists(self, key: str) -> bool:
         return self._safe(key).exists()
 
-    def delete(self, key: str) -> None:
+    def delete(self, key: str, wait: float = 4.0) -> None:
+        """Remove a file or folder. On Windows a file a browser is still streaming can't be deleted
+        immediately, so retry for up to `wait` seconds before giving up with an OSError."""
         p = self._safe(key)
-        if p.is_dir():
-            shutil.rmtree(p, ignore_errors=True)
-        elif p.exists():
-            p.unlink()
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                if p.is_dir():
+                    shutil.rmtree(p)
+                elif p.exists():
+                    p.unlink()
+                return
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.25)
 
 
 _storage: LocalStorage | None = None
