@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from .base import GameProfile
+from .among_us import AMONG_US
+from .gta import GTA
 from .valorant import VALORANT
 
 GENERIC = GameProfile(id="generic", name="Generic (audio + motion)")
 
-_PROFILES: dict[str, GameProfile] = {p.id: p for p in (GENERIC, VALORANT)}
+_PROFILES: dict[str, GameProfile] = {p.id: p for p in (GENERIC, VALORANT, AMONG_US, GTA)}
 
 
 def get(game_id: str) -> GameProfile:

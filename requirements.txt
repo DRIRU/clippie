@@ -10,3 +10,4 @@ httpx
 rapidocr-onnxruntime
 rapidfuzz
 pillow
+faster-whisper

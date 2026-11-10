@@ -37,7 +37,8 @@ def _from_job(job: dict | None, done_if: bool = False) -> tuple[str, float, str 
 
 
 def build_steps(*, asset: dict, jobs: list[dict], has_hud: bool, vlm_on: bool, candidate_count: int,
-                verified_count: int, previews_ready: int) -> dict:
+                verified_count: int, previews_ready: int, captions_wanted: bool = False,
+                captions_ready: int = 0) -> dict:
     """asset: {status, has_source_url, has_source}; jobs: oldest first, each {kind,status,stage,progress,error}."""
     steps: list[dict] = []
 
@@ -107,6 +108,17 @@ def build_steps(*, asset: dict, jobs: list[dict], has_hud: bool, vlm_on: bool, c
     else:
         st, pr, err = _from_job(preview)
         add("clips", "Trim clips", st, pr, err)
+
+    # ---- subtitles (only when asked for or already generated) ----
+    cjob = _latest(jobs, "captions")
+    if captions_wanted or cjob or captions_ready:
+        if upstream_busy:
+            add("captions", "Subtitles", "pending", 0.0)
+        elif candidate_count and captions_ready >= candidate_count and not (cjob and cjob["status"] in ("running", "queued")):
+            add("captions", "Subtitles", "done", 1.0)
+        else:
+            st, pr, err = _from_job(cjob)
+            add("captions", "Subtitles", st, pr, err)
 
     done = sum(1 for s in steps if s["state"] == "done")
     running = next((s for s in steps if s["state"] == "running"), None)

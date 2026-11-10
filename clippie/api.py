@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import jobs, library, media, pipeline, vlm  # noqa: F401  (pipeline registers handlers)
+from . import captions, jobs, library, media, pipeline, vlm  # noqa: F401  (pipeline registers handlers)
 from .config import get_settings
 from .db import init_db, session
 from .models import Candidate, Export, GameEvent, Job, MediaAsset
@@ -37,6 +37,7 @@ app = FastAPI(title="clippie (barebone)", lifespan=lifespan)
 def _asset(a: MediaAsset) -> dict:
     return {"id": a.id, "name": a.name, "status": a.status, "game": a.game, "meta": a.meta,
             "profile_config": a.profile_config or {},
+            "caption_style": captions.CaptionStyle.from_dict(a.caption_style).to_dict(),
             "source_url": a.source_url, "created_at": a.created_at.isoformat(),
             "thumb": f"/api/files/thumbs/{a.id}.jpg" if a.status == "ready" else None,
             "video": f"/api/files/{a.source_key}" if a.source_key else None}
@@ -63,13 +64,15 @@ def _cand(c: Candidate) -> dict:
             "score": c.score, "score_breakdown": c.score_breakdown, "event_types": c.event_types,
             "verification": c.verification,
             "preview_url": _preview_url(c.preview_key),
+            "captions": c.captions,
             "length": round(c.end - c.start, 1),
             "status": c.status, "manual": c.manual}
 
 
 def _export(e: Export) -> dict:
     return {"id": e.id, "candidate_id": e.candidate_id, "kind": e.kind, "status": e.status,
-            "url": f"/api/files/{e.key}" if e.key else None, "start": e.start, "end": e.end}
+            "url": f"/api/files/{e.key}" if e.key else None, "start": e.start, "end": e.end,
+            "subtitles": bool(e.subtitles)}
 
 
 # ---------- health / profiles ----------
@@ -77,7 +80,7 @@ def _export(e: Export) -> dict:
 def health():
     cfg = get_settings()
     return {"ok": True, "db": cfg.db_url.split(":")[0], "storage": cfg.storage_backend,
-            "vlm_enabled": vlm.enabled()}
+            "vlm_enabled": vlm.enabled(), "captions_available": captions.available()}
 
 
 @app.get("/api/game-profiles")
@@ -87,13 +90,14 @@ def game_profiles():
 
 # ---------- assets ----------
 @app.post("/api/assets/upload")
-def upload(file: UploadFile = File(...), name: str | None = Form(None)):
+def upload(file: UploadFile = File(...), name: str | None = Form(None), auto_captions: bool = Form(False)):
     ext = Path(file.filename or "").suffix.lower()
     if ext not in media.ALLOWED_EXTS:
         raise HTTPException(400, f"unsupported file type {ext!r}")
     cfg, st = get_settings(), get_storage()
     with session() as s:
-        a = MediaAsset(name=(name or file.filename or "upload")[:300])
+        a = MediaAsset(name=(name or file.filename or "upload")[:300],
+                       profile_config={"auto_captions": True} if auto_captions else {})
         s.add(a)
         s.commit()
         asset_id = a.id
@@ -118,6 +122,7 @@ class ImportBody(BaseModel):
     game: str = "generic"
     player_name: str | None = None
     auto_analyze: bool = True
+    auto_captions: bool = False
 
 
 @app.post("/api/assets/import-url")
@@ -134,7 +139,8 @@ def import_url(body: ImportBody):
         raise HTTPException(400, f"the {profile.name} profile needs your in-game name")
     with session() as s:
         a = MediaAsset(name=(body.name or body.url)[:300], source_url=body.url, game=body.game,
-                       profile_config={"player_name": (body.player_name or "").strip()[:64]} if body.player_name else {})
+                       profile_config={**({"player_name": body.player_name.strip()[:64]} if body.player_name else {}),
+                                       **({"auto_captions": True} if body.auto_captions else {})})
         s.add(a)
         s.commit()
         asset_id = a.id
@@ -150,10 +156,13 @@ def _enrich(s, a: MediaAsset) -> dict:
     d["candidate_count"] = len(cands)
     d["verified_count"] = sum(1 for c in cands if c.verification)
     d["previews_ready"] = sum(1 for c in cands if c.preview_key)
+    d["captions_ready"] = sum(1 for c in cands if c.captions)
     d["pipeline"] = build_steps(
         asset={"status": a.status, "has_source_url": bool(a.source_url), "has_source": bool(a.source_key)},
         jobs=jobs_old_first, has_hud=bool(registry.get(a.game).regions), vlm_on=vlm.enabled(),
-        candidate_count=len(cands), verified_count=d["verified_count"], previews_ready=d["previews_ready"])
+        candidate_count=len(cands), verified_count=d["verified_count"], previews_ready=d["previews_ready"],
+        captions_wanted=bool((a.profile_config or {}).get("auto_captions")) and captions.available(),
+        captions_ready=d["captions_ready"])
     return d
 
 
@@ -186,9 +195,18 @@ def delete_asset(asset_id: str):
         raise HTTPException(404, "asset not found")
 
 
+@app.get("/api/caption-options")
+def caption_options():
+    return {"available": captions.available(), "model": get_settings().whisper_model,
+            "presets": captions.PRESETS, "sizes": captions.SIZES, "fonts": captions.FONTS,
+            "defaults": captions.CaptionStyle().to_dict()}
+
+
 class AssetPatch(BaseModel):
     game: str | None = None
     player_name: str | None = None
+    caption_style: dict | None = None      # partial update; validated and clamped
+    auto_captions: bool | None = None
 
 
 @app.patch("/api/assets/{asset_id}")
@@ -203,6 +221,14 @@ def patch_asset(asset_id: str, body: AssetPatch):
             a.game = body.game
         if body.player_name is not None:
             a.profile_config = {**(a.profile_config or {}), "player_name": body.player_name.strip()[:64]}
+        if body.auto_captions is not None:
+            a.profile_config = {**(a.profile_config or {}), "auto_captions": body.auto_captions}
+        if body.caption_style is not None:
+            try:
+                a.caption_style = captions.CaptionStyle.from_dict(body.caption_style,
+                                                                  base=captions.CaptionStyle.from_dict(a.caption_style)).to_dict()
+            except ValueError as e:
+                raise HTTPException(400, str(e))
         s.commit()
         return _asset(a)
 
@@ -233,6 +259,25 @@ def verify_asset(asset_id: str, body: VerifyBody | None = None):
         if a.status != "ready":
             raise HTTPException(409, "asset is not ready yet")
     return {"job_id": jobs.enqueue("verify", asset_id, {"force": bool(body and body.force)})}
+
+
+class CaptionsBody(BaseModel):
+    force: bool = False
+
+
+@app.post("/api/assets/{asset_id}/captions")
+def generate_captions(asset_id: str, body: CaptionsBody | None = None):
+    if not captions.available():
+        raise HTTPException(409, "subtitles need faster-whisper (pip install faster-whisper)")
+    with session() as s:
+        a = _get_asset(s, asset_id)
+        if a.status != "ready":
+            raise HTTPException(409, "asset is not ready yet")
+        if not s.query(Candidate).filter_by(asset_id=asset_id).count():
+            raise HTTPException(409, "there are no clips to transcribe yet; analyze the video first")
+        a.profile_config = {**(a.profile_config or {}), "auto_captions": True}   # keep them for re-analysis too
+        s.commit()
+    return {"job_id": jobs.enqueue("captions", asset_id, {"force": bool(body and body.force)})}
 
 
 @app.get("/api/assets/{asset_id}/events")
@@ -321,8 +366,11 @@ def patch_candidate(cid: str, body: CandidatePatch):
             c.score = bd.get("detector_score", c.score)
             c.verification = None
         old_preview = c.preview_key if changed else None
+        had_captions = bool(changed and c.captions)
         if changed:
             c.preview_key = None
+            c.captions = None            # the words belong to the old span
+        
         c.start, c.end = start, end
         s.commit()
         asset_id, out = c.asset_id, _cand(c)
@@ -330,6 +378,8 @@ def patch_candidate(cid: str, body: CandidatePatch):
         if old_preview:
             get_storage().delete(old_preview)
         jobs.enqueue("preview", asset_id, {"candidate_id": cid})   # re-render the trimmed clip
+        if had_captions and captions.available():
+            jobs.enqueue("captions", asset_id, {"candidate_id": cid})   # and its subtitles
     return out
 
 
@@ -353,6 +403,7 @@ def reject(cid: str):
 
 class ExportBody(BaseModel):
     kinds: list[str] = ["original", "vertical"]
+    subtitles: bool | None = None     # None = burn them in when they are enabled in the style and exist for this clip
 
 
 @app.post("/api/candidates/{cid}/export")
@@ -364,7 +415,12 @@ def export_candidate(cid: str, body: ExportBody | None = None):
     with session() as s:
         c = _get_cand(s, cid)
         asset_id, start, end = c.asset_id, c.start, c.end
-        exports = [Export(candidate_id=cid, kind=k, start=start, end=end) for k in kinds]
+        style = captions.CaptionStyle.from_dict(s.get(MediaAsset, asset_id).caption_style)
+        has_caps = bool(c.captions and c.captions.get("words"))
+        want = (style.enabled and has_caps) if (body is None or body.subtitles is None) else body.subtitles
+        if want and not has_caps:
+            raise HTTPException(409, "this clip has no subtitles yet; generate them first")
+        exports = [Export(candidate_id=cid, kind=k, start=start, end=end, subtitles=want) for k in kinds]
         s.add_all(exports)
         s.commit()
         ids = [(e.id, e.kind) for e in exports]

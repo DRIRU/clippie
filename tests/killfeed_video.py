@@ -42,7 +42,7 @@ def render(out: Path, feed: list[tuple[float, float, str, str]], duration: float
             d.text((1080, y), victim, font=FONT, fill=(255, 120, 120))
         for (a, b, text) in banners:
             if a <= t < b:
-                d.text((520, 430), text, font=BIG, fill=(255, 255, 255))
+                d.text(((W - d.textlength(text, font=BIG)) / 2, 430), text, font=BIG, fill=(255, 255, 255))
         p.stdin.write(img.tobytes())
     p.stdin.close()
     p.wait()

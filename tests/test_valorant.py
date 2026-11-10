@@ -87,7 +87,7 @@ def wait(client, jid, timeout=240):
 
 def test_registry_and_override_api(client):
     ids = [p["id"] for p in client.get("/api/game-profiles").json()]
-    assert ids == ["generic", "valorant"]
+    assert ids == ["generic", "valorant", "among_us", "gta"]
     with pytest.raises(KeyError):
         registry.get("nope")
 

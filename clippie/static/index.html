@@ -150,6 +150,37 @@
   .exports div { display:flex; gap:8px; align-items:center }
   a { color:var(--accent-text); font-weight:600; text-decoration:none } a:hover { text-decoration:underline }
 
+
+  /* subtitles */
+  .subs { padding:0 }
+  .subs > summary { list-style:none; cursor:pointer; padding:16px 20px; display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center }
+  .subs > summary::-webkit-details-marker { display:none }
+  .subs > summary b { font-size:16px }
+  .subs .chev { margin-left:auto; color:var(--muted); transition:transform .15s } .subs[open] .chev { transform:rotate(180deg) }
+  .subs-body { padding:4px 20px 20px; border-top:1px solid var(--border); display:grid; gap:18px }
+  .subs-top { display:flex; flex-wrap:wrap; gap:12px 16px; align-items:center; padding-top:16px }
+  .grp { display:grid; gap:8px; align-content:start }
+  .grp > .gl { font-size:12px; font-weight:600; color:var(--text-2); display:flex; justify-content:space-between }
+  .grp > .gl span { color:var(--muted); font-weight:500 }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px 28px }
+  .seg { display:flex; flex-wrap:wrap; gap:4px; padding:3px; background:var(--surface-2); border-radius:9px; width:max-content; max-width:100% }
+  .seg button { border:0; background:transparent; color:var(--muted); font-weight:600; font-size:13px; padding:6px 12px; border-radius:7px; cursor:pointer }
+  .seg button.on { background:var(--raised); color:var(--text) }
+  .seg button:hover:not(.on) { color:var(--text) }
+  input[type=range] { width:100%; accent-color:var(--accent); height:22px; margin:0 }
+  .sw { display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:600 }
+  .sw input { appearance:none; -webkit-appearance:none; width:40px; height:22px; border-radius:11px; background:var(--border-2); position:relative; cursor:pointer; transition:background .15s; flex:none; margin:0 }
+  .sw input::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#fff; transition:transform .15s }
+  .sw input:checked { background:var(--accent) } .sw input:checked::after { transform:translateX(18px) }
+  .sw input:focus-visible { outline:2px solid var(--accent-ring); outline-offset:2px }
+  .colors { display:flex; flex-wrap:wrap; gap:14px 18px }
+  .colors label { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-2) }
+  input[type=color] { width:34px; height:34px; padding:0; border:1px solid var(--border-2); border-radius:8px; background:var(--bg); cursor:pointer }
+  .cap { position:absolute; left:4%; right:4%; display:flex; justify-content:center; text-align:center; pointer-events:none; line-height:1.15; z-index:2 }
+  .cap .line { display:inline-block; max-width:100% }
+  .cap .w { white-space:pre-wrap }
+  .cap[data-sample="1"] { opacity:.85 }
+
   .skel { overflow:hidden }
   .skel .a { aspect-ratio:16/9; background:linear-gradient(135deg,#1a1e29,#12151c) }
   .skel .b { padding:14px; display:grid; gap:10px }
@@ -171,6 +202,7 @@
         <label class="field">Game profile<select id="impGame"></select></label>
         <label class="field" id="impNameWrap" style="display:none">In-game name<input type="text" id="impName" placeholder="e.g. Phoenix"></label>
         <label class="check"><input type="checkbox" id="impAuto" checked> Analyze automatically after import</label>
+        <label class="check" id="impCapsWrap" style="display:none" title="Transcribes each clip locally. The speech model downloads the first time you use it."><input type="checkbox" id="impCaps"> Add subtitles to clips</label>
         <button class="btn lg full" id="addBtn">Import</button>
         <div id="addMsg" class="toast" role="status" style="margin:0"></div>
       </div>
@@ -183,6 +215,7 @@
   <section class="stack" id="detail">
     <div id="head"></div>
     <div id="pipe"></div>
+    <div id="subs"></div>
     <div id="clipsArea"></div>
   </section>
 </main>
@@ -191,6 +224,8 @@ const $ = id => document.getElementById(id);
 let selected = null, profiles = [], mode = 'link', vlmEnabled = false;
 let filter = 'all', sortBy = 'best';
 let sigs = {}, lastAsset = null;
+let capStyle = null, capOpts = null, saveTimer = null, saveNote = '';
+const overlays = new Set();
 const openAdjust = new Set();
 
 function el(tag, props = {}, ...kids) {
@@ -245,12 +280,12 @@ $('addBtn').onclick = async () => {
     let r;
     if (mode === 'link') {
       const u = $('url').value.trim(); if (!u) return;
-      r = await post('/assets/import-url', { url: u, game: $('impGame').value, player_name: $('impName').value, auto_analyze: $('impAuto').checked });
+      r = await post('/assets/import-url', { url: u, game: $('impGame').value, player_name: $('impName').value, auto_analyze: $('impAuto').checked, auto_captions: $('impCaps').checked });
       $('url').value = ''; toast('Import started. Follow its progress below.');
     } else {
       const f = $('file').files[0]; if (!f) return;
       toast('Uploading ' + f.name + '...');
-      const fd = new FormData(); fd.append('file', f);
+      const fd = new FormData(); fd.append('file', f); if ($('impCaps').checked) fd.append('auto_captions', 'true');
       r = await api('/assets/upload', { method: 'POST', body: fd }); toast('Upload complete.');
     }
     select(r.asset_id);
@@ -377,7 +412,7 @@ function clipCard(a, c, top) {
   const exportsBox = el('div', { class: 'exports' });
   const loadExports = async () => {
     const ex = await api(`/candidates/${c.id}/exports`);
-    exportsBox.replaceChildren(...ex.slice(0, 4).map(x => el('div', {}, chip(x.status), el('span', {}, x.kind), x.url ? el('a', { href: x.url, download: '' }, 'Download') : null)));
+    exportsBox.replaceChildren(...ex.slice(0, 4).map(x => el('div', {}, chip(x.status), el('span', {}, x.kind), x.subtitles ? chip('subtitles', 'event') : null, x.url ? el('a', { href: x.url, download: '' }, 'Download') : null)));
     if (ex.some(x => ['queued', 'running'].includes(x.status))) setTimeout(loadExports, 1500);
   };
   loadExports();
@@ -386,6 +421,7 @@ function clipCard(a, c, top) {
     ? el('div', { class: 'media' }, el('video', { controls: true, playsinline: true, preload: 'metadata', src: c.preview_url, 'aria-label': 'Clip preview' }), top ? el('div', { class: 'tag-top' }, 'Top pick') : null)
     : el('div', { class: 'media pending' }, el('div', { class: 'wait' }, el('div', { class: 'dot running' }), 'Trimming clip...'), top ? el('div', { class: 'tag-top' }, 'Top pick') : null);
   media.append(el('div', { class: 'len' }, clock(c.length)));
+  if (c.preview_url) attachOverlay(media, media.querySelector('video'), (c.captions && c.captions.words) || []);
   return el('div', { class: 'card clip ' + c.status },
     media,
     el('div', { class: 'cb' },
@@ -403,8 +439,163 @@ function clipCard(a, c, top) {
         el('button', { class: 'btn ok', onclick: async () => { await post(`/candidates/${c.id}/approve`); sigs.clips = null; poll(true); } }, 'Approve'),
         el('button', { class: 'btn bad', onclick: async () => { await post(`/candidates/${c.id}/reject`); sigs.clips = null; poll(true); } }, 'Reject'),
         el('button', { class: 'btn link', 'aria-expanded': String(open), onclick: () => { open ? openAdjust.delete(c.id) : openAdjust.add(c.id); sigs.clips = null; poll(true); } }, 'Adjust length', icon.chev()),
-        el('button', { class: 'btn push', title: 'Render the original and the vertical 9:16 version', onclick: async () => { try { await post(`/candidates/${c.id}/export`, { kinds: ['original', 'vertical'] }); loadExports(); } catch (x) { toast(x.message, true) } } }, 'Export')),
+        capStyle && capStyle.enabled ? el('span', { class: 'muted push', style: 'font-size:12px;margin-right:4px' }, c.captions ? 'Subtitles on' : 'No subtitles yet') : null,
+        el('button', { class: capStyle && capStyle.enabled ? 'btn' : 'btn push', title: 'Render the original and the vertical 9:16 version', onclick: async () => { try { await post(`/candidates/${c.id}/export`, { kinds: ['original', 'vertical'] }); loadExports(); } catch (x) { toast(x.message, true) } } }, 'Export')),
       exportsBox));
+}
+
+
+// ---------- subtitles ----------
+const SAMPLE = ['Your', 'subtitles', 'look', 'like', 'this'].map((w, i) => ({ w, s: i * 0.4, e: i * 0.4 + 0.35 }));
+
+function groupWords(words, maxWords) {            // same rule as captions.group_words on the server
+  const chunks = []; let cur = [];
+  for (const w of words) {
+    if (cur.length && w.s - cur[cur.length - 1].e > 0.8) { chunks.push(cur); cur = []; }
+    cur.push(w);
+    if (cur.length >= maxWords || /[.!?]$/.test(w.w)) { chunks.push(cur); cur = []; }
+  }
+  if (cur.length) chunks.push(cur);
+  return chunks;
+}
+const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+
+function paintOverlay(ov) {
+  const st = capStyle, box = ov.box;
+  if (!st || !st.enabled) { box.style.display = 'none'; return; }
+  const words = ov.words.length ? ov.words : SAMPLE;
+  const chunks = groupWords(words, st.max_words);
+  const t = ov.video.currentTime;
+  let chunk = chunks.find((c, i) => t >= c[0].s - 0.02 && t <= Math.min(c[c.length - 1].e + 0.15, chunks[i + 1] ? chunks[i + 1][0].s : 1e9));
+  let sample = false;
+  if (!chunk) {                                      // paused with nothing spoken here: show a sample so styling can be judged
+    if (!ov.video.paused) { box.style.display = 'none'; return; }
+    chunk = chunks[0]; sample = true;
+  }
+  const H = ov.media.clientHeight || 300, fs = st.size_pct / 100 * H, outline = st.outline_pct * fs;
+  const activeT = sample ? chunk[0].s : t;
+  let active = 0; chunk.forEach((w, i) => { if (activeT >= w.s - 0.02) active = i; });
+  const line = el('span', { class: 'line' });
+  chunk.forEach((w, i) => {
+    const word = el('span', { class: 'w' }, (st.uppercase ? w.w.toUpperCase() : w.w) + (i < chunk.length - 1 ? ' ' : ''));
+    word.style.color = st.highlight && i === active ? st.highlight : st.color;
+    line.append(word);
+  });
+  Object.assign(box.style, { display: 'flex', fontFamily: `"${st.font}", system-ui, sans-serif`, fontSize: fs + 'px', fontWeight: st.bold ? 700 : 400 });
+  box.dataset.sample = sample ? '1' : '0';
+  box.style.top = box.style.bottom = box.style.transform = '';
+  if (st.position === 'top') box.style.top = st.margin_pct / 100 * H + 'px';
+  else if (st.position === 'middle') { box.style.top = '50%'; box.style.transform = 'translateY(-50%)'; }
+  else box.style.bottom = st.margin_pct / 100 * H + 'px';
+  line.style.cssText = '';
+  if (st.box) Object.assign(line.style, { background: rgba(st.box_color, st.box_opacity), padding: '.12em .35em', borderRadius: '.18em' });
+  else Object.assign(line.style, { webkitTextStroke: `${outline * 1.6}px ${st.outline_color}`, paintOrder: 'stroke fill', textShadow: `0 ${fs * 0.04}px ${fs * 0.1}px rgba(0,0,0,.35)` });
+  box.replaceChildren(line);
+}
+function attachOverlay(media, video, words) {
+  if (!video) return;
+  const box = el('div', { class: 'cap', 'aria-hidden': 'true' });
+  media.append(box);
+  const ov = { media, video, box, words };
+  overlays.add(ov);
+  const tick = () => paintOverlay(ov);
+  ['timeupdate', 'seeked', 'play', 'pause', 'loadedmetadata'].forEach(ev => video.addEventListener(ev, tick));
+  video.addEventListener('play', function loop() { if (!overlays.has(ov)) return; tick(); if (!video.paused && !video.ended) requestAnimationFrame(loop); });
+  if (window.ResizeObserver) new ResizeObserver(tick).observe(media);
+  tick();
+}
+function paintAllOverlays() { for (const ov of [...overlays]) { if (!ov.media.isConnected) { overlays.delete(ov); continue; } paintOverlay(ov); } }
+
+function scheduleSave(a) {
+  saveNote = 'Saving...'; paintSaveNote();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try { await patch(`/assets/${a.id}`, { caption_style: capStyle }); saveNote = 'Saved'; }
+    catch (x) { saveNote = 'Could not save: ' + x.message; }
+    paintSaveNote();
+  }, 450);
+}
+function paintSaveNote() { const n = document.getElementById('saveNote'); if (n) n.textContent = saveNote; }
+
+function setStyle(a, partial, rerender) {
+  capStyle = { ...capStyle, ...partial };
+  paintAllOverlays(); scheduleSave(a);
+  if (rerender) renderSubtitles(a);
+}
+
+function seg(options, current, onPick) {
+  return el('div', { class: 'seg', role: 'group' }, ...options.map(([val, text]) => el('button', { class: current === val ? 'on' : '', 'aria-pressed': String(current === val), onclick: () => onPick(val) }, text)));
+}
+function rangeCtl(min, max, step, value, onInput, fmt) {
+  const out = el('span', {}, fmt(value));
+  const input = el('input', { type: 'range', min, max, step, value });
+  input.oninput = () => { out.textContent = fmt(+input.value); onInput(+input.value); };
+  return [out, input];
+}
+function grp(label, ...kids) { return el('div', { class: 'grp' }, el('div', { class: 'gl' }, label), ...kids); }
+function grpRange(label, min, max, step, value, onInput, fmt) {
+  const [out, input] = rangeCtl(min, max, step, value, onInput, fmt);
+  return el('div', { class: 'grp' }, el('div', { class: 'gl' }, label, out), input);
+}
+function colorCtl(label, value, onInput) {
+  const input = el('input', { type: 'color', value, 'aria-label': label });
+  input.oninput = () => onInput(input.value.toUpperCase());
+  return el('label', {}, input, label);
+}
+
+function renderSubtitles(a) {
+  const host = $('subs');
+  if (!capOpts || !a || !a.candidate_count) { host.replaceChildren(); return; }
+  if (!capOpts.available) {
+    host.replaceChildren(el('div', { class: 'card pad muted' }, 'Subtitles need the faster-whisper package. Run: pip install faster-whisper, then restart the server.'));
+    return;
+  }
+  const st = capStyle, step = a.pipeline.steps.find(s => s.id === 'captions');
+  const generating = step && (step.state === 'running' || step.state === 'pending') && a.latest_job && ['running', 'queued'].includes(a.latest_job.status);
+  const ready = a.captions_ready >= a.candidate_count;
+  const openState = host.querySelector('details') ? host.querySelector('details').open : true;
+  const sizeBtns = Object.entries(capOpts.sizes).map(([n, v]) => [v, n]);
+  const body = el('div', { class: 'subs-body' },
+    el('div', { class: 'subs-top' },
+      el('label', { class: 'sw' }, el('input', { type: 'checkbox', checked: st.enabled, onchange: e => setStyle(a, { enabled: e.target.checked }, true) }), 'Show on clips and burn into exports'),
+      !ready || generating ? el('button', { class: 'btn ghost', disabled: !!generating, onclick: async () => { try { await post(`/assets/${a.id}/captions`, { force: false }); poll(true); } catch (x) { toast(x.message, true) } } },
+        generating ? 'Transcribing...' : (a.captions_ready ? 'Finish transcribing' : 'Generate subtitles')) : el('span', { class: 'muted', style: 'font-size:13px' }, 'Generated for all clips'),
+      el('span', { class: 'muted', id: 'saveNote', style: 'font-size:12px;margin-left:auto' }, saveNote)),
+    !ready ? el('div', { class: 'muted', style: 'font-size:13px' }, `The first run downloads the "${capOpts.model}" speech model. You can style the subtitles now; the preview text on each clip shows how they will look.`) : null,
+    el('div', { class: 'grp' }, el('div', { class: 'gl' }, 'Style presets'),
+      seg(Object.keys(capOpts.presets).map(n => [n, n]), null, n => setStyle(a, capOpts.presets[n], true))),
+    el('div', { class: 'cols' },
+      el('div', { class: 'grp' }, el('div', { class: 'gl' }, 'Text size'),
+        seg(sizeBtns, sizeBtns.find(([v]) => Math.abs(v - st.size_pct) < 0.01) ? st.size_pct : null, v => setStyle(a, { size_pct: v }, true)),
+        ...rangeCtl(2, 18, 0.5, st.size_pct, v => setStyle(a, { size_pct: v }), v => `${v}% of video height`).reverse()),
+      el('div', { class: 'grp' }, el('div', { class: 'gl' }, 'Position'),
+        seg([['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']], st.position, v => setStyle(a, { position: v }, true)),
+        grpRange('Distance from edge', 0, 45, 1, st.margin_pct, v => setStyle(a, { margin_pct: v }), v => v + '%')),
+      el('div', { class: 'grp' }, el('div', { class: 'gl' }, 'Font'),
+        (() => { const sel = el('select', { 'aria-label': 'Subtitle font', onchange: e => setStyle(a, { font: e.target.value }) }, ...capOpts.fonts.map(f => { const o = el('option', { value: f }, f); if (f === st.font) o.selected = true; return o; })); return sel; })(),
+        el('div', { style: 'display:flex;gap:18px;flex-wrap:wrap;margin-top:6px' },
+          el('label', { class: 'sw' }, el('input', { type: 'checkbox', checked: st.bold, onchange: e => setStyle(a, { bold: e.target.checked }) }), 'Bold'),
+          el('label', { class: 'sw' }, el('input', { type: 'checkbox', checked: st.uppercase, onchange: e => setStyle(a, { uppercase: e.target.checked }) }), 'ALL CAPS'))),
+      grpRange('Words shown at a time', 1, 8, 1, st.max_words, v => setStyle(a, { max_words: v }), v => String(v))),
+    el('div', { class: 'cols' },
+      el('div', { class: 'grp' }, el('div', { class: 'gl' }, 'Colours'),
+        el('div', { class: 'colors' },
+          colorCtl('Text', st.color, v => setStyle(a, { color: v })),
+          colorCtl('Spoken word', st.highlight || '#FFD400', v => setStyle(a, { highlight: v })),
+          colorCtl('Outline', st.outline_color, v => setStyle(a, { outline_color: v }))),
+        el('label', { class: 'sw', style: 'margin-top:6px' }, el('input', { type: 'checkbox', checked: !!st.highlight, onchange: e => setStyle(a, { highlight: e.target.checked ? '#FFD400' : '' }, true) }), 'Highlight the spoken word')),
+      el('div', { class: 'grp' }, el('div', { class: 'gl' }, 'Background'),
+        el('label', { class: 'sw' }, el('input', { type: 'checkbox', checked: st.box, onchange: e => setStyle(a, { box: e.target.checked }, true) }), 'Solid box behind the text'),
+        st.box ? el('div', { class: 'colors' }, colorCtl('Box', st.box_color, v => setStyle(a, { box_color: v })))
+               : null,
+        st.box ? grpRange('Box opacity', 0, 1, 0.05, st.box_opacity, v => setStyle(a, { box_opacity: v }), v => Math.round(v * 100) + '%')
+               : grpRange('Outline thickness', 0, 0.35, 0.01, st.outline_pct, v => setStyle(a, { outline_pct: v }), v => Math.round(v * 100) + '%'))),
+    el('div', { class: 'muted', style: 'font-size:12px' }, 'The preview on each clip shows the original shape. Sizes are a percentage of the video height, so the vertical 9:16 export (1080x1920) scales them to its own height.'));
+  const details = el('details', { class: 'card subs' }, el('summary', {}, el('b', {}, 'Subtitles'),
+    chip(!ready ? (generating ? 'transcribing' : 'not generated') : (st.enabled ? 'on' : 'off'), !ready ? (generating ? 'running' : '') : (st.enabled ? 'done' : '')),
+    el('span', { class: 'chev', 'aria-hidden': 'true' }, icon.chev())), body);
+  details.open = openState;
+  host.replaceChildren(details);
 }
 
 // ---------- polling / routing ----------
@@ -420,22 +611,26 @@ async function poll(force) {
     const a = list.find(x => x.id === selected);
     lastAsset = a || null;
     if (!a) {
-      $('head').replaceChildren(); $('pipe').replaceChildren();
+      $('head').replaceChildren(); $('pipe').replaceChildren(); $('subs').replaceChildren();
       $('clipsArea').replaceChildren(el('div', { class: 'card empty' }, el('h3', {}, list.length ? 'Select a video' : 'No videos yet'),
         el('div', {}, list.length ? 'Choose one from the library to see its progress and clips.' : 'Paste a YouTube or Twitch link to get started.')));
       return;
     }
+    if (sigs.styleFor !== a.id) { sigs.styleFor = a.id; capStyle = { ...a.caption_style }; saveNote = ''; }
+    const ss = JSON.stringify([a.id, a.candidate_count, a.captions_ready, isBusy(a), (a.pipeline.steps.find(x => x.id === 'captions') || {}).state]);
+    if (ss !== sigs.subs) { sigs.subs = ss; renderSubtitles(a); }
     const hs = JSON.stringify([a.id, a.status, a.game, a.profile_config, isBusy(a), a.candidate_count > 0, vlmEnabled]);
     if (hs !== sigs.head) { sigs.head = hs; renderHead(a); }
     renderPipeline(a);
-    const cs = JSON.stringify([a.id, a.candidate_count, a.verified_count, a.previews_ready, a.pipeline.state === 'running', filter, sortBy, [...openAdjust]]);
+    const cs = JSON.stringify([a.id, a.candidate_count, a.verified_count, a.previews_ready, a.captions_ready, capStyle && capStyle.enabled, a.pipeline.state === 'running', filter, sortBy, [...openAdjust]]);
     if (cs !== sigs.clips) { sigs.clips = cs; await renderClips(a); }
   } catch (x) { /* transient: next tick retries */ }
   finally { polling = false; }
 }
 
-Promise.all([api('/health').catch(() => ({})), api('/game-profiles')]).then(([h, p]) => {
-  vlmEnabled = !!h.vlm_enabled;
+Promise.all([api('/health').catch(() => ({})), api('/game-profiles'), api('/caption-options').catch(() => null)]).then(([h, p, co]) => {
+  vlmEnabled = !!h.vlm_enabled; capOpts = co;
+  if (co && co.available) $('impCapsWrap').style.display = '';
   profiles = p;
   $('impGame').replaceChildren(...p.map(x => el('option', { value: x.id }, x.name)));
   const sync = () => { const pr = profiles.find(x => x.id === $('impGame').value); $('impNameWrap').style.display = pr && pr.needs_player_name ? '' : 'none'; };

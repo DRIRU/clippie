@@ -20,14 +20,20 @@ def _video_args() -> list[str]:
     return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]
 
 
-def build_command(src: Path, out: Path, start: float, end: float, kind: str, has_audio: bool) -> list[str]:
+def build_command(src: Path, out: Path, start: float, end: float, kind: str, has_audio: bool,
+                  ass_name: str | None = None) -> list[str]:
+    """ass_name: file name of an ASS subtitle file in the process's working directory (kept relative so no
+    drive-letter or backslash escaping is needed inside the filter graph)."""
     if end <= start:
         raise ValueError("end must be greater than start")
     cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.3f}", "-i", str(src), "-t", f"{end - start:.3f}"]
     if kind == "vertical":
-        cmd += ["-filter_complex", VERTICAL_FILTER, "-map", "[v]"]
+        fg = VERTICAL_FILTER
+        if ass_name:
+            fg = fg.replace("format=yuv420p[v]", f"ass={ass_name},format=yuv420p[v]")
+        cmd += ["-filter_complex", fg, "-map", "[v]"]
     elif kind == "original":
-        cmd += ["-map", "0:v:0"]
+        cmd += ["-map", "0:v:0"] + (["-vf", f"ass={ass_name},format=yuv420p"] if ass_name else [])
     elif kind == "preview":  # small, fast, seekable clip for in-browser review
         cmd += ["-map", "0:v:0", "-vf", r"scale=-2:min(540\,ih),format=yuv420p"]
     else:
@@ -39,9 +45,17 @@ def build_command(src: Path, out: Path, start: float, end: float, kind: str, has
     return cmd
 
 
-def render(src: Path, out: Path, start: float, end: float, kind: str, has_audio: bool) -> None:
+def render(src: Path, out: Path, start: float, end: float, kind: str, has_audio: bool,
+           ass_text: str | None = None) -> None:
+    """ass_text: optional subtitle file content to burn into the picture (original and vertical only)."""
     out.parent.mkdir(parents=True, exist_ok=True)
-    cmd = build_command(src, out, start, end, kind, has_audio)
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    if ass_text is None:
+        r = subprocess.run(build_command(src, out, start, end, kind, has_audio), capture_output=True, text=True)
+    else:
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix="clippie-ass-") as d:
+            (Path(d) / "subs.ass").write_text(ass_text, encoding="utf-8")
+            r = subprocess.run(build_command(src.resolve(), out.resolve(), start, end, kind, has_audio, "subs.ass"),
+                               capture_output=True, text=True, cwd=d)
     if r.returncode != 0:
         raise RuntimeError(f"ffmpeg failed: {r.stderr.strip()[-500:]}")

@@ -6,6 +6,7 @@ import numpy as np
 import hashlib
 import json
 
+from . import captions as captions_mod
 from . import jobs, media, rendering, vlm
 from .detection import ocr
 from .profiles import registry
@@ -136,6 +137,8 @@ def analyze(job_id, asset_id, params, progress):
         st.delete(f"frames/{cid}")
     if cands:
         jobs.enqueue("preview", asset_id)       # trimmed clips first, so they show up quickly
+        if captions_mod.available() and (cfg.auto_captions or pcfg.get("auto_captions")):
+            jobs.enqueue("captions", asset_id)
     if vlm.enabled() and cfg.auto_verify and cands:
         jobs.enqueue("verify", asset_id)
 
@@ -162,6 +165,35 @@ def preview(job_id, asset_id, params, progress):
                 st.delete(key)          # deleted or re-trimmed while rendering; a newer job handles it
                 continue
             c.preview_key = key
+            s.commit()
+
+
+@jobs.handler("captions")
+def captions_job(job_id, asset_id, params, progress):
+    """Transcribe the speech of each clip (only that span of audio). Idempotent: clips that already
+    have subtitles are skipped unless force=True."""
+    st, cfg = get_storage(), get_settings()
+    with session() as s:
+        asset = s.get(MediaAsset, asset_id)
+        src = st.local_path(asset.source_key)
+        q = s.query(Candidate).filter_by(asset_id=asset_id)
+        if params.get("candidate_id"):
+            q = q.filter_by(id=params["candidate_id"])
+        todo = [(c.id, c.start, c.end) for c in q.order_by(Candidate.start).all()
+                if c.status != "rejected" and (params.get("force") or not c.captions)]
+    if not todo:
+        return
+    progress("loading speech model", 0.0)
+    captions_mod._load_model()          # first use downloads the model; do it before the per-clip loop
+    for n, (cid, start, end) in enumerate(todo):
+        progress("transcribing", n / len(todo))
+        res = captions_mod.transcribe(src, start, end)
+        with session() as s:
+            c = s.get(Candidate, cid)
+            if c is None or (c.start, c.end) != (start, end):
+                continue                # deleted or re-trimmed meanwhile; a newer job handles it
+            c.captions = {"words": res["words"], "language": res["language"], "model": cfg.whisper_model,
+                          "start": start, "end": end}
             s.commit()
 
 
@@ -209,12 +241,21 @@ def export(job_id, asset_id, params, progress):
         asset = s.get(MediaAsset, cd.asset_id)
         src, has_audio = st.local_path(asset.source_key), asset.meta.get("has_audio", True)
         kind, start, end = ex.kind, ex.start, ex.end
+        want_subs = bool(ex.subtitles)
+        style_d, caps = asset.caption_style, cd.captions
+        w, h = asset.meta.get("width", 1280), asset.meta.get("height", 720)
         ex.status = "running"
         s.commit()
     key = f"exports/{export_id}/{kind}.mp4"
     progress("rendering", 0.1)
     try:
-        rendering.render(src, st.new_path(key), start, end, kind, has_audio)
+        ass = None
+        if want_subs:
+            if not caps or (caps.get("start"), caps.get("end")) != (start, end):
+                raise RuntimeError("subtitles for this clip are missing or out of date; generate them again")
+            out_w, out_h = (1080, 1920) if kind == "vertical" else (w, h)
+            ass = captions_mod.build_ass(caps["words"], captions_mod.CaptionStyle.from_dict(style_d), out_w, out_h)
+        rendering.render(src, st.new_path(key), start, end, kind, has_audio, ass_text=ass)
     except Exception:
         with session() as s:
             s.get(Export, export_id).status = "failed"

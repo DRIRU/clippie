@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     vlm_max_images: int = 4           # images per request; 1 => frames are tiled into one contact sheet
     vlm_timeout: float = 120.0
     auto_verify: bool = True          # chain verification after analysis when the VLM is configured
+    # Subtitles (local faster-whisper). The model is downloaded on first use.
+    whisper_model: str = "base"       # tiny | base | small | medium ...  (".en" variants are English-only)
+    whisper_device: str = "auto"      # auto | cpu | cuda
+    whisper_compute_type: str = "auto"
+    whisper_language: str | None = None   # None = detect automatically
+    auto_captions: bool = False       # transcribe every new video without being asked
     # Detection tuning
     min_candidate_score: float = 0.35
     max_candidates_per_hour: int = 40

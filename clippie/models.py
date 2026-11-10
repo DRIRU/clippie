@@ -31,7 +31,8 @@ class MediaAsset(Base):
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|ready|failed
     game: Mapped[str] = mapped_column(String(50), default="generic")  # manual override later
-    profile_config: Mapped[dict] = mapped_column(JSON, default=dict)  # e.g. {"player_name": "..."}
+    profile_config: Mapped[dict] = mapped_column(JSON, default=dict)  # e.g. {"player_name": "...", "auto_captions": true}
+    caption_style: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # see captions.CaptionStyle
     meta: Mapped[dict] = mapped_column(JSON, default=dict)  # ffprobe summary
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
@@ -77,6 +78,7 @@ class Candidate(Base):
     event_types: Mapped[list] = mapped_column(JSON, default=list)
     verification: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # VLM verdict, see vlm.py
     preview_key: Mapped[str | None] = mapped_column(String(500), nullable=True)  # rendered, trimmed clip
+    captions: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {"words": [...], "language": ..., "model": ...}
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|approved|rejected
     manual: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -92,4 +94,5 @@ class Export(Base):
     key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     start: Mapped[float] = mapped_column(Float)
     end: Mapped[float] = mapped_column(Float)
+    subtitles: Mapped[bool] = mapped_column(Boolean, default=False)  # subtitles burned into this export
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
