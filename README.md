@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎬 clippie
+# clippie
 
 **Paste a gaming video link. Get ranked highlight clips, ready for YouTube Shorts, TikTok and Reels.**
 
@@ -16,7 +16,7 @@ Self-hosted · local-first · no paid AI APIs
 
 ---
 
-## ✨ What it does
+## What it does
 
 ```
  YouTube / Twitch link ─┐
@@ -28,15 +28,15 @@ Self-hosted · local-first · no paid AI APIs
 
 | | |
 |---|---|
-| 🔗 **Paste & go** | Drop a YouTube link, it downloads, analyzes automatically and lists candidates. Or upload a file. |
-| 🔊 **Finds the loud, busy moments** | Audio loudness, spectral change, motion and scene cuts fused into a score with a visible breakdown. |
-| 🎯 **Game profiles** *(experimental)* | Reads the Valorant kill feed with OCR to find *your* kills, multi-kills, and ACE / CLUTCH banners. |
-| ✂️ **Review in the browser** | Preview each clip, nudge start and end, approve or reject. |
-| 📱 **Two exports per clip** | Original aspect ratio, and 1080×1920 vertical with a blurred background (no blind centre crop). |
-| 🔁 **Survives restarts** | Jobs live in SQLite with progress and retry. Finished analysis stages are checkpointed and skipped on resume. |
-| 🪶 **Runs anywhere** | SQLite + local folder + in-process workers. No Docker, Postgres, Redis or MinIO needed. |
+| **Paste & go** | Drop a YouTube link, it downloads, analyzes automatically and lists candidates. Or upload a file. |
+| **Finds the loud, busy moments** | Audio loudness, spectral change, motion and scene cuts fused into a score with a visible breakdown. |
+| **Game profiles** *(experimental)* | Reads the Valorant kill feed with OCR to find *your* kills, multi-kills, and ACE / CLUTCH banners. |
+| **Review in the browser** | Preview each clip, nudge start and end, approve or reject. |
+| **Two exports per clip** | Original aspect ratio, and 1080×1920 vertical with a blurred background (no blind centre crop). |
+| **Survives restarts** | Jobs live in SQLite with progress and retry. Finished analysis stages are checkpointed and skipped on resume. |
+| **Runs anywhere** | SQLite + local folder + in-process workers. No Docker, Postgres, Redis or MinIO needed. |
 
-## 🚀 Quick start
+## Quick start
 
 You need **Python 3.11+** and **ffmpeg / ffprobe** on your PATH. For YouTube links, also have **Node.js** (or Deno/Bun) installed. YouTube downloads need a JavaScript runtime.
 
@@ -54,7 +54,7 @@ Want something to try without a real video?
 .venv/Scripts/python -m tools.make_samples    # writes synthetic clips into sample/
 ```
 
-## 🎮 Game profiles
+## Game profiles
 
 Pick a game per video in the UI. Today there are two options:
 
@@ -65,16 +65,16 @@ Pick a game per video in the UI. Today there are two options:
 
 With a profile active, candidates are scored with confirmed game events weighted highest (35% event, 20% significance, 15% audio, 15% visual, 5% scene cuts, renormalised because reaction and context aren't built yet). The full breakdown is stored on every candidate.
 
-> ⚠️ **Honest status:** the Valorant profile has only been tested on *synthetic* kill feeds (clean text, no gameplay behind it). Screen regions and thresholds are uncalibrated guesses, and real-world accuracy is unknown until it's run on real recordings with labelled highlights. OCR speed was about 0.3 s per frame in that synthetic test, so roughly 35 min per source hour at 1 fps is an estimate, not a measurement.
+> **Status:** the Valorant profile has only been tested on *synthetic* kill feeds (clean text, no gameplay behind it). Screen regions and thresholds are uncalibrated guesses, and real-world accuracy is unknown until it's run on real recordings with labelled highlights. OCR speed was about 0.3 s per frame in that synthetic test, so roughly 35 min per source hour at 1 fps is an estimate, not a measurement.
 
-## 🧪 Tests
+## Tests
 
 ```bash
 .venv/Scripts/python -m pytest -q          # includes real ffmpeg renders and OCR
 .venv/Scripts/python -m tools.bench_ocr    # OCR smoke benchmark on a synthetic kill feed
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 Environment variables with the `CLIPPIE_` prefix (see [`.env.example`](.env.example)):
 
@@ -86,13 +86,13 @@ Environment variables with the `CLIPPIE_` prefix (see [`.env.example`](.env.exam
 | `CLIPPIE_MAX_UPLOAD_GB` / `CLIPPIE_MAX_DURATION_HOURS` | `20` / `6` | Input limits |
 | `CLIPPIE_USE_NVENC` | `false` | Use NVIDIA NVENC for rendering |
 
-## 🛡️ Security notes
+## Security notes
 
 - **No authentication yet.** The server binds to `127.0.0.1` only. Do not expose it to a network.
 - URL imports accept only `http(s)` and refuse hosts that resolve to private addresses. The hostname is checked once, so redirects followed by yt-dlp are not re-validated.
 - Upload type and size limits apply, and files are validated with ffprobe.
 
-## 🗺️ Roadmap
+## Roadmap
 
 See [`PLAN.md`](PLAN.md) for the phased plan and [`AUDIT.md`](AUDIT.md) for the research on the open-source projects this builds on.
 
@@ -106,7 +106,7 @@ See [`PLAN.md`](PLAN.md) for the phased plan and [`AUDIT.md`](AUDIT.md) for the 
 - [ ] Postgres, S3/MinIO, Celery and Redis for the full deployment
 - [ ] Authentication, retention and cleanup
 
-## 📁 Project layout
+## Project layout
 
 ```
 clippie/

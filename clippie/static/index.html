@@ -5,55 +5,146 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>clippie</title>
 <style>
-  :root { --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --text:#e6e8ee; --dim:#8b93a5; --accent:#ff4655; --ok:#3ecf8e; --warn:#f5a524; }
+  :root {
+    --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f0f2f5; --border:#e1e4ea; --text:#14171f; --muted:#667085;
+    --accent:#4f46e5; --accent-hover:#4338ca; --accent-soft:#eef0ff;
+    --ok:#12805c; --ok-soft:#e5f6ef; --warn:#9a6700; --warn-soft:#fff4d6; --bad:#c4321c; --bad-soft:#fdeceb;
+    --shadow:0 1px 2px rgba(16,24,40,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0c0e13; --surface:#14171e; --surface-2:#1b1f28; --border:#262b36; --text:#e8eaf0; --muted:#8d95a6;
+      --accent:#7c83ff; --accent-hover:#9399ff; --accent-soft:#1d2040;
+      --ok:#47c79a; --ok-soft:#12291f; --warn:#e3b341; --warn-soft:#2d2410; --bad:#ff7b6b; --bad-soft:#2e1714;
+      --shadow:none;
+    }
+  }
   * { box-sizing:border-box }
-  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,sans-serif; }
-  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline }
-  header h1 { margin:0; font-size:18px } header span { color:var(--dim) }
-  main { display:grid; grid-template-columns:380px 1fr; gap:16px; padding:16px; max-width:1400px; margin:auto }
-  @media (max-width:900px){ main{grid-template-columns:1fr} }
-  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px }
-  h2 { margin:0 0 10px; font-size:14px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim) }
-  input[type=text],input[type=number],select { background:#0f1115; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 9px; width:100% }
-  input[type=number]{ width:90px }
-  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:7px 12px; cursor:pointer; font-weight:600 }
-  button.ghost { background:transparent; border:1px solid var(--line); color:var(--text) }
-  button:disabled { opacity:.5; cursor:default }
-  .row { display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap }
-  .asset { border:1px solid var(--line); border-radius:8px; padding:8px; margin:8px 0; cursor:pointer; display:flex; gap:10px }
-  .asset.sel { border-color:var(--accent) }
-  .asset img { width:96px; height:54px; object-fit:cover; border-radius:4px; background:#000 }
-  .dim { color:var(--dim); font-size:12px }
-  .bar { height:5px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:4px }
-  .bar > i { display:block; height:100%; background:var(--accent) }
-  .pill { font-size:11px; padding:1px 7px; border-radius:10px; border:1px solid var(--line) }
-  .done,.approved{ color:var(--ok); border-color:var(--ok) } .failed,.rejected{ color:var(--accent); border-color:var(--accent) } .running,.queued{ color:var(--warn); border-color:var(--warn) }
-  .cand { border:1px solid var(--line); border-radius:8px; padding:10px; margin:10px 0 }
-  .cand video { width:100%; max-height:320px; background:#000; border-radius:6px }
-  .score { font-weight:700; font-size:16px }
-  a { color:#7aa2ff }
+  html { color-scheme: light dark }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif; -webkit-font-smoothing:antialiased }
+
+  header { position:sticky; top:0; z-index:5; background:var(--surface); border-bottom:1px solid var(--border); }
+  .bar-in { max-width:1360px; margin:auto; padding:0 20px; height:52px; display:flex; align-items:center; gap:12px }
+  .brand { font-weight:700; font-size:17px; letter-spacing:-.01em }
+  .brand b { color:var(--accent) }
+  .tag { color:var(--muted); font-size:12px; padding-left:12px; border-left:1px solid var(--border) }
+
+  main { max-width:1360px; margin:auto; padding:20px; display:grid; grid-template-columns:360px minmax(0,1fr); gap:20px; align-items:start }
+  @media (max-width:960px){ main{ grid-template-columns:1fr } }
+  .stack { display:grid; gap:16px }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow) }
+  .card-h { padding:14px 16px 0; font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted) }
+  .card-b { padding:14px 16px 16px }
+
+  .tabs { display:inline-flex; background:var(--surface-2); border-radius:8px; padding:3px; margin-bottom:12px }
+  .tabs button { background:none; border:0; color:var(--muted); padding:5px 14px; border-radius:6px; font-weight:600; cursor:pointer; font-size:13px }
+  .tabs button.on { background:var(--surface); color:var(--text); box-shadow:var(--shadow) }
+
+  input[type=text],input[type=number],select { font:inherit; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 10px; width:100%; min-width:0 }
+  input:focus,select:focus { outline:2px solid var(--accent); outline-offset:-1px; border-color:transparent }
+  input[type=number] { width:84px }
+  input[type=file] { font:inherit; color:var(--muted); width:100% }
+  label.check { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:13px }
+  .field { display:grid; gap:5px; margin-top:12px }
+  .field > span { font-size:12px; font-weight:600; color:var(--muted) }
+  .grid2 { display:flex; gap:10px }
+  .grid2 .field { flex:1; min-width:0 }
+
+  button.btn { font:inherit; font-weight:600; border:1px solid transparent; background:var(--accent); color:#fff; border-radius:8px; padding:8px 14px; cursor:pointer; white-space:nowrap }
+  button.btn:hover:not(:disabled) { background:var(--accent-hover) }
+  button.btn.secondary { background:var(--surface); color:var(--text); border-color:var(--border) }
+  button.btn.secondary:hover:not(:disabled) { background:var(--surface-2) }
+  button.btn.ok { background:var(--ok-soft); color:var(--ok); border-color:transparent }
+  button.btn.bad { background:var(--bad-soft); color:var(--bad); border-color:transparent }
+  button.btn.sm { padding:5px 10px; font-size:13px }
+  button.btn:disabled { opacity:.45; cursor:not-allowed }
+  .full { width:100% }
+
+  .chip { display:inline-flex; align-items:center; font-size:12px; font-weight:600; padding:2px 9px; border-radius:999px; background:var(--surface-2); color:var(--muted); white-space:nowrap }
+  .chip.done,.chip.approved { background:var(--ok-soft); color:var(--ok) }
+  .chip.running,.chip.queued { background:var(--warn-soft); color:var(--warn) }
+  .chip.failed,.chip.rejected { background:var(--bad-soft); color:var(--bad) }
+  .chip.event { background:var(--accent-soft); color:var(--accent) }
+
+  .muted { color:var(--muted); font-size:13px }
+  .toast { margin-top:10px; font-size:13px; padding:8px 10px; border-radius:8px; background:var(--surface-2); color:var(--muted) }
+  .toast.err { background:var(--bad-soft); color:var(--bad) }
+  .toast:empty { display:none }
+
+  .asset { display:flex; gap:12px; padding:10px; border:1px solid transparent; border-radius:9px; cursor:pointer }
+  .asset:hover { background:var(--surface-2) }
+  .asset.sel { background:var(--accent-soft); border-color:var(--accent) }
+  .thumb { width:96px; height:54px; border-radius:6px; object-fit:cover; background:var(--surface-2); flex:none }
+  .asset .t { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .meter { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin-top:6px }
+  .meter > i { display:block; height:100%; background:var(--accent); transition:width .3s }
+
+  .empty { text-align:center; padding:56px 20px; color:var(--muted) }
+  .empty h3 { margin:0 0 6px; color:var(--text); font-size:16px }
+
+  .detail-h { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; padding:16px }
+  .detail-h h2 { margin:0; font-size:18px; letter-spacing:-.01em; overflow-wrap:anywhere }
+  .detail-h .sp { flex:1; min-width:200px }
+  .actions { display:flex; gap:8px }
+  .settings { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; padding:0 16px 16px }
+  .settings .field { margin:0 }
+  .banner { margin:0 16px 16px; padding:10px 12px; border-radius:8px; background:var(--bad-soft); color:var(--bad); display:flex; gap:12px; align-items:center; justify-content:space-between }
+
+  .list-h { display:flex; align-items:center; justify-content:space-between; margin:20px 2px 10px }
+  .list-h h3 { margin:0; font-size:15px }
+  .cands { display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)) }
+  @media (max-width:520px){ .cands { grid-template-columns:1fr } }
+  .cand { overflow:hidden; border-left:3px solid var(--border) }
+  .cand.approved { border-left-color:var(--ok) } .cand.rejected { border-left-color:var(--bad); opacity:.7 }
+  .cand video { width:100%; display:block; background:#000; aspect-ratio:16/9 }
+  .cand-b { padding:12px 14px 14px; display:grid; gap:12px }
+  .cand-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+  .score { font-size:22px; font-weight:700; letter-spacing:-.02em; margin-right:2px }
+  .score small { font-size:12px; color:var(--muted); font-weight:500 }
+  .sigs { display:grid; gap:5px }
+  .sig { display:grid; grid-template-columns:96px 1fr 34px; align-items:center; gap:8px; font-size:12px; color:var(--muted) }
+  .sig .meter { margin:0; height:5px }
+  .sig .meter i { background:var(--muted) }
+  .sig.game .meter i { background:var(--accent) }
+  .trim { display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+  .trim span { font-size:12px; color:var(--muted); font-weight:600 }
+  .btns { display:flex; gap:8px; flex-wrap:wrap }
+  .exports { display:grid; gap:4px; font-size:13px }
+  .exports div { display:flex; gap:8px; align-items:center }
+  a { color:var(--accent); font-weight:600; text-decoration:none } a:hover { text-decoration:underline }
 </style>
 </head>
 <body>
-<header><h1>clippie</h1><span>barebone prototype &middot; SQLite + local storage</span></header>
+<header><div class="bar-in"><span class="brand">clip<b>pie</b></span><span class="tag">Highlight clips from gaming video</span></div></header>
 <main>
-  <section>
-    <div class="panel">
-      <h2>Add video</h2>
-      <div class="row"><input type="file" id="file" accept="video/*,.mkv"><button id="upBtn">Upload</button></div>
-      <div class="row"><input type="text" id="url" placeholder="Paste a YouTube / Twitch VOD link"><button id="impBtn">Import</button></div>
-      <div class="row"><select id="impGame" style="width:auto"></select>
-        <input type="text" id="impName" style="width:150px;display:none" placeholder="Your in-game name">
-        <label class="dim"><input type="checkbox" id="impAuto" checked> analyze automatically</label></div>
-      <div id="addMsg" class="dim"></div>
+  <section class="stack">
+    <div class="card">
+      <div class="card-h">Add video</div>
+      <div class="card-b">
+        <div class="tabs"><button id="tabLink" class="on">Link</button><button id="tabFile">Upload</button></div>
+        <div id="paneLink">
+          <input type="text" id="url" placeholder="Paste a YouTube or Twitch VOD link">
+        </div>
+        <div id="paneFile" style="display:none"><input type="file" id="file" accept="video/*,.mkv"></div>
+        <div class="grid2">
+          <label class="field"><span>Game</span><select id="impGame"></select></label>
+          <label class="field" id="impNameWrap" style="display:none"><span>In-game name</span><input type="text" id="impName" placeholder="e.g. Phoenix"></label>
+        </div>
+        <label class="check" style="margin-top:12px"><input type="checkbox" id="impAuto" checked> Analyze automatically after import</label>
+        <button class="btn full" id="addBtn" style="margin-top:14px">Import</button>
+        <div id="addMsg" class="toast"></div>
+      </div>
     </div>
-    <div class="panel" style="margin-top:16px"><h2>Library</h2><div id="assets"></div></div>
+    <div class="card">
+      <div class="card-h">Library</div>
+      <div class="card-b" style="padding-top:8px"><div id="assets"></div></div>
+    </div>
   </section>
-  <section class="panel" id="detail"><h2>Candidates</h2><div class="dim">Select a video.</div></section>
+  <section id="detail"></section>
 </main>
 <script>
 const $ = id => document.getElementById(id);
-let selected = null, timer = null, profiles = [];
+let selected = null, profiles = [], mode = 'link', sortBy = 'time';
 
 function el(tag, props = {}, ...kids) {
   const e = document.createElement(tag);
@@ -69,51 +160,109 @@ const api = async (path, opts = {}) => {
   if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m } catch {} throw new Error(m) }
   return r.json();
 };
-const post = (p, body) => api(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+const send = (method, p, body) => api(p, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+const post = (p, b) => send('POST', p, b), patch = (p, b) => send('PATCH', p, b);
 const fmt = s => { s = Math.max(0, s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = Math.floor(s % 60); return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0') };
-const pill = s => el('span', { class: 'pill ' + s }, s);
+const chip = (s, cls) => el('span', { class: 'chip ' + (cls || s) }, s);
+const label = t => t.replace(/_/g, ' ');
 
+function toast(msg, err) { const t = $('addMsg'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); }
+
+// ---------- add video ----------
+function setMode(m) {
+  mode = m;
+  $('tabLink').classList.toggle('on', m === 'link'); $('tabFile').classList.toggle('on', m === 'file');
+  $('paneLink').style.display = m === 'link' ? '' : 'none'; $('paneFile').style.display = m === 'file' ? '' : 'none';
+  $('addBtn').textContent = m === 'link' ? 'Import' : 'Upload';
+}
+$('tabLink').onclick = () => setMode('link'); $('tabFile').onclick = () => setMode('file');
+$('addBtn').onclick = async () => {
+  try {
+    if (mode === 'link') {
+      const u = $('url').value.trim(); if (!u) return;
+      const r = await post('/assets/import-url', { url: u, game: $('impGame').value, player_name: $('impName').value, auto_analyze: $('impAuto').checked });
+      $('url').value = ''; toast('Import started.'); selected = r.asset_id;
+    } else {
+      const f = $('file').files[0]; if (!f) return;
+      toast('Uploading ' + f.name + '...');
+      const fd = new FormData(); fd.append('file', f);
+      const r = await api('/assets/upload', { method: 'POST', body: fd }); toast('Upload complete.'); selected = r.asset_id;
+    }
+    refresh();
+  } catch (x) { toast(x.message, true) }
+};
+
+// ---------- library ----------
 async function loadAssets() {
   const list = await api('/assets');
   const box = $('assets'); box.replaceChildren();
-  if (!list.length) box.append(el('div', { class: 'dim' }, 'Nothing yet.'));
+  if (!list.length) box.append(el('div', { class: 'muted', style: 'padding:8px' }, 'No videos yet. Add one above.'));
   for (const a of list) {
     const j = a.latest_job;
     const busy = j && (j.status === 'running' || j.status === 'queued');
+    const meta = a.meta.duration ? `${fmt(a.meta.duration)} · ${a.meta.height}p · ${a.candidate_count} candidates` : a.status;
     box.append(el('div', { class: 'asset' + (selected === a.id ? ' sel' : ''), onclick: () => select(a.id) },
-      a.thumb ? el('img', { src: a.thumb }) : el('img', {}),
+      el('img', { class: 'thumb', ...(a.thumb ? { src: a.thumb } : {}) }),
       el('div', { style: 'flex:1;min-width:0' },
-        el('div', { style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, a.name),
-        el('div', { class: 'dim' }, a.meta.duration ? `${fmt(a.meta.duration)} · ${a.meta.width}x${a.meta.height} · ${a.candidate_count} candidates` : a.status),
-        j ? el('div', { class: 'dim' }, pill(j.status), ' ', j.kind, ' ', j.stage, j.error ? ' – ' + j.error : '') : null,
-        busy ? el('div', { class: 'bar' }, el('i', { style: `width:${(j.progress || 0) * 100}%` })) : null)));
+        el('div', { class: 't' }, a.name),
+        el('div', { class: 'muted' }, meta),
+        j ? el('div', { style: 'margin-top:5px;display:flex;gap:6px;align-items:center' }, chip(j.status), el('span', { class: 'muted' }, j.kind + (j.stage && busy ? ' · ' + j.stage : ''))) : null,
+        busy ? el('div', { class: 'meter' }, el('i', { style: `width:${(j.progress || 0) * 100}%` })) : null)));
   }
   return list;
 }
-
 async function select(id) { selected = id; await refresh(); }
 
+// ---------- detail ----------
 async function refresh() {
   const list = await loadAssets();
   const a = list.find(x => x.id === selected);
   const d = $('detail');
-  if (!a) { d.replaceChildren(el('h2', {}, 'Candidates'), el('div', { class: 'dim' }, 'Select a video.')); return; }
+  if (!a) {
+    d.replaceChildren(el('div', { class: 'card' }, el('div', { class: 'empty' },
+      el('h3', {}, 'No video selected'), el('div', {}, 'Paste a link or upload a video, then choose it from the library to review highlight candidates.'))));
+    return;
+  }
   const cands = await api(`/assets/${a.id}/candidates`);
   const busy = list.some(x => x.latest_job && ['running', 'queued'].includes(x.latest_job.status));
-  const head = el('div', { class: 'row' },
-    el('h2', { style: 'margin:0;flex:1' }, a.name),
-    el('button', { disabled: a.status !== 'ready' || busy, onclick: async () => { await post(`/assets/${a.id}/analyze`, { force: false }); refresh(); } }, 'Analyze'),
-    el('button', { class: 'ghost', disabled: a.status !== 'ready' || busy, title: 'Recompute signals from scratch', onclick: async () => { await post(`/assets/${a.id}/analyze`, { force: true }); refresh(); } }, 'Re-analyze'));
   const prof = profiles.find(p => p.id === a.game) || profiles[0];
-  const sel = el('select', { style: 'width:auto', onchange: async e => { await api(`/assets/${a.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: e.target.value }) }); refresh(); } },
+  const j = a.latest_job;
+
+  const gameSel = el('select', { onchange: async e => { await patch(`/assets/${a.id}`, { game: e.target.value }); refresh(); } },
     ...profiles.map(p => { const o = el('option', { value: p.id }, p.name); if (p.id === a.game) o.selected = true; return o; }));
-  const nameIn = el('input', { type: 'text', style: 'width:180px', placeholder: 'Your in-game name', value: (a.profile_config || {}).player_name || '' });
-  const gameRow = el('div', { class: 'row' }, 'Game', sel,
-    prof && prof.needs_player_name ? [nameIn, el('button', { class: 'ghost', onclick: async () => { await api(`/assets/${a.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player_name: nameIn.value }) }); nameIn.style.borderColor = 'var(--ok)'; } }, 'Save name')] : null,
-    prof && prof.note ? el('span', { class: 'dim' }, prof.note) : null);
-  const retry = a.latest_job && a.latest_job.status === 'failed'
-    ? el('div', { class: 'row' }, el('span', { class: 'failed pill' }, 'failed'), a.latest_job.error || '', el('button', { class: 'ghost', onclick: async () => { await post(`/jobs/${a.latest_job.id}/retry`); refresh(); } }, 'Retry')) : null;
-  d.replaceChildren(...[head, gameRow, retry].filter(Boolean), ...(cands.length ? cands.map(c => candCard(a, c)) : [el('div', { class: 'dim' }, a.status === 'ready' ? 'No candidates yet — click Analyze.' : 'Waiting for ingestion…')]));
+  const nameIn = el('input', { type: 'text', placeholder: 'Your in-game name', value: (a.profile_config || {}).player_name || '' });
+  const settings = el('div', { class: 'settings' },
+    el('label', { class: 'field', style: 'min-width:220px' }, el('span', {}, 'Game profile'), gameSel),
+    prof && prof.needs_player_name ? el('label', { class: 'field', style: 'min-width:180px' }, el('span', {}, 'In-game name'), nameIn) : null,
+    prof && prof.needs_player_name ? el('button', { class: 'btn secondary', onclick: async () => { await patch(`/assets/${a.id}`, { player_name: nameIn.value }); toast('Name saved.'); } }, 'Save name') : null,
+    prof && prof.note ? el('span', { class: 'muted', style: 'flex:1;min-width:200px' }, prof.note) : null);
+
+  const header = el('div', { class: 'card' },
+    el('div', { class: 'detail-h' },
+      el('div', { class: 'sp' }, el('h2', {}, a.name),
+        el('div', { class: 'muted', style: 'margin-top:4px' }, a.meta.duration ? `${fmt(a.meta.duration)} · ${a.meta.width}x${a.meta.height} · ${Math.round(a.meta.fps)} fps` : a.status)),
+      el('div', { class: 'actions' },
+        el('button', { class: 'btn secondary', disabled: a.status !== 'ready' || busy, title: 'Recompute all signals from scratch', onclick: async () => { await post(`/assets/${a.id}/analyze`, { force: true }); refresh(); } }, 'Re-analyze'),
+        el('button', { class: 'btn', disabled: a.status !== 'ready' || busy, onclick: async () => { await post(`/assets/${a.id}/analyze`, { force: false }); refresh(); } }, 'Analyze'))),
+    j && j.status === 'failed' ? el('div', { class: 'banner' }, el('span', {}, j.error || 'The last job failed.'),
+      el('button', { class: 'btn secondary sm', onclick: async () => { await post(`/jobs/${j.id}/retry`); refresh(); } }, 'Retry')) : null,
+    settings);
+
+  const sorted = [...cands].sort((x, y) => sortBy === 'score' ? y.score - x.score : x.start - y.start);
+  const sortSel = el('select', { style: 'width:auto', onchange: e => { sortBy = e.target.value; refresh(); } },
+    el('option', { value: 'time' }, 'Sort by time'), el('option', { value: 'score' }, 'Sort by score'));
+  sortSel.value = sortBy;
+  const listHead = el('div', { class: 'list-h' }, el('h3', {}, `Candidates (${cands.length})`), cands.length ? sortSel : null);
+  const body = cands.length ? el('div', { class: 'cands' }, ...sorted.map(c => candCard(a, c)))
+    : el('div', { class: 'card' }, el('div', { class: 'empty' }, el('h3', {}, a.status === 'ready' ? 'No candidates yet' : 'Preparing video'),
+      el('div', {}, a.status === 'ready' ? 'Click Analyze to scan this video for highlights.' : 'The video is still being processed.')));
+  d.replaceChildren(header, listHead, body);
+}
+
+function signal(name, value, game) {
+  if (value == null) return null;
+  return el('div', { class: 'sig' + (game ? ' game' : '') }, el('span', {}, name),
+    el('div', { class: 'meter' }, el('i', { style: `width:${Math.min(1, value) * 100}%` })), el('span', {}, value.toFixed(2)));
 }
 
 function candCard(a, c) {
@@ -121,48 +270,44 @@ function candCard(a, c) {
   const e = el('input', { type: 'number', step: '0.5', value: c.end.toFixed(1) });
   const v = el('video', { controls: 'controls', preload: 'metadata', src: `${a.video}#t=${c.start},${c.end}` });
   v.addEventListener('timeupdate', () => { if (v.currentTime >= +e.value) v.pause(); });
-  const exports = el('div', { class: 'dim' });
+  const exports = el('div', { class: 'exports' });
   const loadExports = async () => {
     const ex = await api(`/candidates/${c.id}/exports`);
-    exports.replaceChildren(...ex.slice(0, 6).map(x => el('div', {}, pill(x.status), ' ', x.kind, ' ', x.url ? el('a', { href: x.url, download: '' }, 'download') : null)));
+    exports.replaceChildren(...ex.slice(0, 4).map(x => el('div', {}, chip(x.status), el('span', {}, x.kind), x.url ? el('a', { href: x.url, download: '' }, 'Download') : null)));
     if (ex.some(x => ['queued', 'running'].includes(x.status))) setTimeout(loadExports, 1500);
   };
   loadExports();
   const bd = c.score_breakdown || {};
-  return el('div', { class: 'cand' },
-    el('div', { class: 'row' }, el('span', { class: 'score' }, c.score.toFixed(2)), pill(c.status), c.manual ? pill('manual') : null, ...(c.event_types || []).map(t => el('span', { class: 'pill', style: 'color:var(--accent);border-color:var(--accent)' }, t)),
-      el('span', { class: 'dim' }, `peak ${fmt(c.peak)} · audio ${bd.audio_excitement ?? '–'} · motion ${bd.visual_intensity ?? '–'} · cuts ${bd.scene_change ?? '–'}`)),
+  return el('div', { class: 'card cand ' + c.status },
     v,
-    el('div', { class: 'row' }, 'Start', s, 'End', e,
-      el('button', { class: 'ghost', onclick: async () => { try { await api(`/candidates/${c.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start: +s.value, end: +e.value }) }); v.src = `${a.video}#t=${s.value},${e.value}`; } catch (x) { alert(x.message) } } }, 'Save trim'),
-      el('button', { class: 'ghost', onclick: async () => { await post(`/candidates/${c.id}/approve`); refresh(); } }, 'Approve'),
-      el('button', { class: 'ghost', onclick: async () => { await post(`/candidates/${c.id}/reject`); refresh(); } }, 'Reject'),
-      el('button', { onclick: async () => { await post(`/candidates/${c.id}/export`, { kinds: ['original', 'vertical'] }); loadExports(); } }, 'Export original + vertical')),
-    exports);
+    el('div', { class: 'cand-b' },
+      el('div', { class: 'cand-top' },
+        el('span', { class: 'score' }, c.score.toFixed(2), el('small', {}, ' score')),
+        chip(c.status), c.manual ? chip('manual') : null,
+        ...(c.event_types || []).map(t => chip(label(t), 'event')),
+        el('span', { class: 'muted', style: 'margin-left:auto' }, `peak ${fmt(c.peak)}`)),
+      el('div', { class: 'sigs' },
+        signal('Game event', bd.game_event, true), signal('Significance', bd.event_significance, true),
+        signal('Audio', bd.audio_excitement), signal('Motion', bd.visual_intensity), signal('Scene cuts', bd.scene_change)),
+      el('div', { class: 'trim' }, el('span', {}, 'Start'), s, el('span', {}, 'End'), e,
+        el('button', { class: 'btn secondary sm', onclick: async () => { try { await patch(`/candidates/${c.id}`, { start: +s.value, end: +e.value }); v.src = `${a.video}#t=${s.value},${e.value}`; toast('Trim saved.'); } catch (x) { toast(x.message, true) } } }, 'Save trim')),
+      el('div', { class: 'btns' },
+        el('button', { class: 'btn ok sm', onclick: async () => { await post(`/candidates/${c.id}/approve`); refresh(); } }, 'Approve'),
+        el('button', { class: 'btn bad sm', onclick: async () => { await post(`/candidates/${c.id}/reject`); refresh(); } }, 'Reject'),
+        el('button', { class: 'btn sm', style: 'margin-left:auto', onclick: async () => { await post(`/candidates/${c.id}/export`, { kinds: ['original', 'vertical'] }); loadExports(); } }, 'Export original + vertical')),
+      exports));
 }
 
-$('upBtn').onclick = async () => {
-  const f = $('file').files[0]; if (!f) return;
-  $('addMsg').textContent = 'Uploading ' + f.name + '…';
-  const fd = new FormData(); fd.append('file', f);
-  try { const r = await api('/assets/upload', { method: 'POST', body: fd }); $('addMsg').textContent = 'Uploaded.'; selected = r.asset_id; refresh(); }
-  catch (x) { $('addMsg').textContent = 'Error: ' + x.message }
-};
-$('impBtn').onclick = async () => {
-  const u = $('url').value.trim(); if (!u) return;
-  try { const r = await post('/assets/import-url', { url: u, game: $('impGame').value, player_name: $('impName').value, auto_analyze: $('impAuto').checked }); $('addMsg').textContent = 'Import queued.'; $('url').value = ''; selected = r.asset_id; refresh(); }
-  catch (x) { $('addMsg').textContent = 'Error: ' + x.message }
-};
-
+// ---------- boot ----------
 api('/game-profiles').then(p => {
   profiles = p;
   $('impGame').replaceChildren(...p.map(x => el('option', { value: x.id }, x.name)));
-  const sync = () => { const pr = profiles.find(x => x.id === $('impGame').value); $('impName').style.display = pr && pr.needs_player_name ? '' : 'none'; };
+  const sync = () => { const pr = profiles.find(x => x.id === $('impGame').value); $('impNameWrap').style.display = pr && pr.needs_player_name ? '' : 'none'; };
   $('impGame').onchange = sync; sync(); refresh();
 });
 setInterval(async () => { try { await loadAssets() } catch {} }, 2000);
 setInterval(async () => {
-  // refresh detail only when a job just finished, to avoid resetting video playback
+  // re-render the detail pane only when something meaningful changed, so video playback isn't reset
   try {
     const list = await api('/assets'); const a = list.find(x => x.id === selected);
     const sig = a ? JSON.stringify([a.status, a.candidate_count, a.latest_job && a.latest_job.status]) : '';
