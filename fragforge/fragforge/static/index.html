@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>clippie</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --text:#e6e8ee; --dim:#8b93a5; --accent:#ff4655; --ok:#3ecf8e; --warn:#f5a524; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,sans-serif; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline }
+  header h1 { margin:0; font-size:18px } header span { color:var(--dim) }
+  main { display:grid; grid-template-columns:380px 1fr; gap:16px; padding:16px; max-width:1400px; margin:auto }
+  @media (max-width:900px){ main{grid-template-columns:1fr} }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px }
+  h2 { margin:0 0 10px; font-size:14px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim) }
+  input[type=text],input[type=number],select { background:#0f1115; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 9px; width:100% }
+  input[type=number]{ width:90px }
+  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:7px 12px; cursor:pointer; font-weight:600 }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--text) }
+  button:disabled { opacity:.5; cursor:default }
+  .row { display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap }
+  .asset { border:1px solid var(--line); border-radius:8px; padding:8px; margin:8px 0; cursor:pointer; display:flex; gap:10px }
+  .asset.sel { border-color:var(--accent) }
+  .asset img { width:96px; height:54px; object-fit:cover; border-radius:4px; background:#000 }
+  .dim { color:var(--dim); font-size:12px }
+  .bar { height:5px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:4px }
+  .bar > i { display:block; height:100%; background:var(--accent) }
+  .pill { font-size:11px; padding:1px 7px; border-radius:10px; border:1px solid var(--line) }
+  .done,.approved{ color:var(--ok); border-color:var(--ok) } .failed,.rejected{ color:var(--accent); border-color:var(--accent) } .running,.queued{ color:var(--warn); border-color:var(--warn) }
+  .cand { border:1px solid var(--line); border-radius:8px; padding:10px; margin:10px 0 }
+  .cand video { width:100%; max-height:320px; background:#000; border-radius:6px }
+  .score { font-weight:700; font-size:16px }
+  a { color:#7aa2ff }
+</style>
+</head>
+<body>
+<header><h1>clippie</h1><span>barebone prototype &middot; SQLite + local storage</span></header>
+<main>
+  <section>
+    <div class="panel">
+      <h2>Add video</h2>
+      <div class="row"><input type="file" id="file" accept="video/*,.mkv"><button id="upBtn">Upload</button></div>
+      <div class="row"><input type="text" id="url" placeholder="Paste a YouTube / Twitch VOD link"><button id="impBtn">Import</button></div>
+      <div class="row"><select id="impGame" style="width:auto"></select>
+        <input type="text" id="impName" style="width:150px;display:none" placeholder="Your in-game name">
+        <label class="dim"><input type="checkbox" id="impAuto" checked> analyze automatically</label></div>
+      <div id="addMsg" class="dim"></div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h2>Library</h2><div id="assets"></div></div>
+  </section>
+  <section class="panel" id="detail"><h2>Candidates</h2><div class="dim">Select a video.</div></section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let selected = null, timer = null, profiles = [];
+
+function el(tag, props = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'class') e.className = v; else if (k.startsWith('on')) e[k] = v;
+    else if (typeof v === 'boolean') { if (v) e.setAttribute(k, ''); } else e.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+}
+const api = async (path, opts = {}) => {
+  const r = await fetch('/api' + path, opts);
+  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m } catch {} throw new Error(m) }
+  return r.json();
+};
+const post = (p, body) => api(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+const fmt = s => { s = Math.max(0, s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = Math.floor(s % 60); return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0') };
+const pill = s => el('span', { class: 'pill ' + s }, s);
+
+async function loadAssets() {
+  const list = await api('/assets');
+  const box = $('assets'); box.replaceChildren();
+  if (!list.length) box.append(el('div', { class: 'dim' }, 'Nothing yet.'));
+  for (const a of list) {
+    const j = a.latest_job;
+    const busy = j && (j.status === 'running' || j.status === 'queued');
+    box.append(el('div', { class: 'asset' + (selected === a.id ? ' sel' : ''), onclick: () => select(a.id) },
+      a.thumb ? el('img', { src: a.thumb }) : el('img', {}),
+      el('div', { style: 'flex:1;min-width:0' },
+        el('div', { style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, a.name),
+        el('div', { class: 'dim' }, a.meta.duration ? `${fmt(a.meta.duration)} · ${a.meta.width}x${a.meta.height} · ${a.candidate_count} candidates` : a.status),
+        j ? el('div', { class: 'dim' }, pill(j.status), ' ', j.kind, ' ', j.stage, j.error ? ' – ' + j.error : '') : null,
+        busy ? el('div', { class: 'bar' }, el('i', { style: `width:${(j.progress || 0) * 100}%` })) : null)));
+  }
+  return list;
+}
+
+async function select(id) { selected = id; await refresh(); }
+
+async function refresh() {
+  const list = await loadAssets();
+  const a = list.find(x => x.id === selected);
+  const d = $('detail');
+  if (!a) { d.replaceChildren(el('h2', {}, 'Candidates'), el('div', { class: 'dim' }, 'Select a video.')); return; }
+  const cands = await api(`/assets/${a.id}/candidates`);
+  const busy = list.some(x => x.latest_job && ['running', 'queued'].includes(x.latest_job.status));
+  const head = el('div', { class: 'row' },
+    el('h2', { style: 'margin:0;flex:1' }, a.name),
+    el('button', { disabled: a.status !== 'ready' || busy, onclick: async () => { await post(`/assets/${a.id}/analyze`, { force: false }); refresh(); } }, 'Analyze'),
+    el('button', { class: 'ghost', disabled: a.status !== 'ready' || busy, title: 'Recompute signals from scratch', onclick: async () => { await post(`/assets/${a.id}/analyze`, { force: true }); refresh(); } }, 'Re-analyze'));
+  const prof = profiles.find(p => p.id === a.game) || profiles[0];
+  const sel = el('select', { style: 'width:auto', onchange: async e => { await api(`/assets/${a.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: e.target.value }) }); refresh(); } },
+    ...profiles.map(p => { const o = el('option', { value: p.id }, p.name); if (p.id === a.game) o.selected = true; return o; }));
+  const nameIn = el('input', { type: 'text', style: 'width:180px', placeholder: 'Your in-game name', value: (a.profile_config || {}).player_name || '' });
+  const gameRow = el('div', { class: 'row' }, 'Game', sel,
+    prof && prof.needs_player_name ? [nameIn, el('button', { class: 'ghost', onclick: async () => { await api(`/assets/${a.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player_name: nameIn.value }) }); nameIn.style.borderColor = 'var(--ok)'; } }, 'Save name')] : null,
+    prof && prof.note ? el('span', { class: 'dim' }, prof.note) : null);
+  const retry = a.latest_job && a.latest_job.status === 'failed'
+    ? el('div', { class: 'row' }, el('span', { class: 'failed pill' }, 'failed'), a.latest_job.error || '', el('button', { class: 'ghost', onclick: async () => { await post(`/jobs/${a.latest_job.id}/retry`); refresh(); } }, 'Retry')) : null;
+  d.replaceChildren(...[head, gameRow, retry].filter(Boolean), ...(cands.length ? cands.map(c => candCard(a, c)) : [el('div', { class: 'dim' }, a.status === 'ready' ? 'No candidates yet — click Analyze.' : 'Waiting for ingestion…')]));
+}
+
+function candCard(a, c) {
+  const s = el('input', { type: 'number', step: '0.5', value: c.start.toFixed(1) });
+  const e = el('input', { type: 'number', step: '0.5', value: c.end.toFixed(1) });
+  const v = el('video', { controls: 'controls', preload: 'metadata', src: `${a.video}#t=${c.start},${c.end}` });
+  v.addEventListener('timeupdate', () => { if (v.currentTime >= +e.value) v.pause(); });
+  const exports = el('div', { class: 'dim' });
+  const loadExports = async () => {
+    const ex = await api(`/candidates/${c.id}/exports`);
+    exports.replaceChildren(...ex.slice(0, 6).map(x => el('div', {}, pill(x.status), ' ', x.kind, ' ', x.url ? el('a', { href: x.url, download: '' }, 'download') : null)));
+    if (ex.some(x => ['queued', 'running'].includes(x.status))) setTimeout(loadExports, 1500);
+  };
+  loadExports();
+  const bd = c.score_breakdown || {};
+  return el('div', { class: 'cand' },
+    el('div', { class: 'row' }, el('span', { class: 'score' }, c.score.toFixed(2)), pill(c.status), c.manual ? pill('manual') : null, ...(c.event_types || []).map(t => el('span', { class: 'pill', style: 'color:var(--accent);border-color:var(--accent)' }, t)),
+      el('span', { class: 'dim' }, `peak ${fmt(c.peak)} · audio ${bd.audio_excitement ?? '–'} · motion ${bd.visual_intensity ?? '–'} · cuts ${bd.scene_change ?? '–'}`)),
+    v,
+    el('div', { class: 'row' }, 'Start', s, 'End', e,
+      el('button', { class: 'ghost', onclick: async () => { try { await api(`/candidates/${c.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start: +s.value, end: +e.value }) }); v.src = `${a.video}#t=${s.value},${e.value}`; } catch (x) { alert(x.message) } } }, 'Save trim'),
+      el('button', { class: 'ghost', onclick: async () => { await post(`/candidates/${c.id}/approve`); refresh(); } }, 'Approve'),
+      el('button', { class: 'ghost', onclick: async () => { await post(`/candidates/${c.id}/reject`); refresh(); } }, 'Reject'),
+      el('button', { onclick: async () => { await post(`/candidates/${c.id}/export`, { kinds: ['original', 'vertical'] }); loadExports(); } }, 'Export original + vertical')),
+    exports);
+}
+
+$('upBtn').onclick = async () => {
+  const f = $('file').files[0]; if (!f) return;
+  $('addMsg').textContent = 'Uploading ' + f.name + '…';
+  const fd = new FormData(); fd.append('file', f);
+  try { const r = await api('/assets/upload', { method: 'POST', body: fd }); $('addMsg').textContent = 'Uploaded.'; selected = r.asset_id; refresh(); }
+  catch (x) { $('addMsg').textContent = 'Error: ' + x.message }
+};
+$('impBtn').onclick = async () => {
+  const u = $('url').value.trim(); if (!u) return;
+  try { const r = await post('/assets/import-url', { url: u, game: $('impGame').value, player_name: $('impName').value, auto_analyze: $('impAuto').checked }); $('addMsg').textContent = 'Import queued.'; $('url').value = ''; selected = r.asset_id; refresh(); }
+  catch (x) { $('addMsg').textContent = 'Error: ' + x.message }
+};
+
+api('/game-profiles').then(p => {
+  profiles = p;
+  $('impGame').replaceChildren(...p.map(x => el('option', { value: x.id }, x.name)));
+  const sync = () => { const pr = profiles.find(x => x.id === $('impGame').value); $('impName').style.display = pr && pr.needs_player_name ? '' : 'none'; };
+  $('impGame').onchange = sync; sync(); refresh();
+});
+setInterval(async () => { try { await loadAssets() } catch {} }, 2000);
+setInterval(async () => {
+  // refresh detail only when a job just finished, to avoid resetting video playback
+  try {
+    const list = await api('/assets'); const a = list.find(x => x.id === selected);
+    const sig = a ? JSON.stringify([a.status, a.candidate_count, a.latest_job && a.latest_job.status]) : '';
+    if (sig !== window._sig) { window._sig = sig; refresh(); }
+  } catch {}
+}, 2000);
+</script>
+</body>
+</html>

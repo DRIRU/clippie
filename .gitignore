@@ -1,0 +1,11 @@
+.venv/
+**/.venv/
+audit/
+data/
+__pycache__/
+*.pyc
+.env
+*.mp4
+*.log
+.pytest_cache/
+.claude/
