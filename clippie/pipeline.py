@@ -7,6 +7,7 @@ import hashlib
 import json
 
 from . import captions as captions_mod
+from . import layout as layout_mod
 from . import jobs, media, rendering, vlm
 from .detection import ocr
 from .profiles import registry
@@ -242,7 +243,7 @@ def export(job_id, asset_id, params, progress):
         src, has_audio = st.local_path(asset.source_key), asset.meta.get("has_audio", True)
         kind, start, end = ex.kind, ex.start, ex.end
         want_subs = bool(ex.subtitles)
-        style_d, caps = asset.caption_style, cd.captions
+        style_d, caps, layout_d = asset.caption_style, cd.captions, asset.layout
         w, h = asset.meta.get("width", 1280), asset.meta.get("height", 720)
         ex.status = "running"
         s.commit()
@@ -255,7 +256,8 @@ def export(job_id, asset_id, params, progress):
                 raise RuntimeError("subtitles for this clip are missing or out of date; generate them again")
             out_w, out_h = (1080, 1920) if kind == "vertical" else (w, h)
             ass = captions_mod.build_ass(caps["words"], captions_mod.CaptionStyle.from_dict(style_d), out_w, out_h)
-        rendering.render(src, st.new_path(key), start, end, kind, has_audio, ass_text=ass)
+        vf = layout_mod.vertical_filter(layout_mod.Layout.from_dict(layout_d), w, h) if kind == "vertical" else None
+        rendering.render(src, st.new_path(key), start, end, kind, has_audio, ass_text=ass, vfilter=vf)
     except Exception:
         with session() as s:
             s.get(Export, export_id).status = "failed"

@@ -66,7 +66,7 @@ Added scope for both modes: the `StorageBackend` interface with both implementat
 - Accept, reject, trim, extend, merge. Job progress via SSE.
 - **Exit check:** the whole flow from upload to approved candidates works without SSH.
 
-## Phase 7: Rendering (3-5 days)
+## Phase 7: Rendering (3-5 days) — built: original and vertical exports, subtitles, facecam layout, bulk export
 - Original export (stream copy where possible).
 - Vertical 1080x1920 with a game-profile crop region, blurred background, and optional facecam layout and captions (faster-whisper, ASS burn-in).
 - NVENC with CPU fallback.

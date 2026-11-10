@@ -42,7 +42,7 @@ def _add_missing_columns():
     from sqlalchemy import inspect, text
 
     insp = inspect(_engine)
-    wanted = {"media_assets": [("profile_config", "JSON"), ("caption_style", "JSON")],
+    wanted = {"media_assets": [("profile_config", "JSON"), ("caption_style", "JSON"), ("layout", "JSON")],
               "clip_candidates": [("verification", "JSON"), ("preview_key", "VARCHAR(500)"), ("captions", "JSON")],
               "exports": [("subtitles", "BOOLEAN")]}
     for table, cols_needed in wanted.items():

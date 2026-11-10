@@ -6,12 +6,7 @@ from pathlib import Path
 
 from .config import get_settings
 
-VERTICAL_FILTER = (
-    "[0:v]split=2[a][b];"
-    "[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=30:5[bg];"
-    "[b]scale=1080:-2[fg];"
-    "[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]"
-)
+from .layout import BLUR_FILTER as VERTICAL_FILTER  # noqa: E402  (default vertical layout)
 
 
 def _video_args() -> list[str]:
@@ -21,14 +16,14 @@ def _video_args() -> list[str]:
 
 
 def build_command(src: Path, out: Path, start: float, end: float, kind: str, has_audio: bool,
-                  ass_name: str | None = None) -> list[str]:
+                  ass_name: str | None = None, vfilter: str | None = None) -> list[str]:
     """ass_name: file name of an ASS subtitle file in the process's working directory (kept relative so no
     drive-letter or backslash escaping is needed inside the filter graph)."""
     if end <= start:
         raise ValueError("end must be greater than start")
     cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.3f}", "-i", str(src), "-t", f"{end - start:.3f}"]
     if kind == "vertical":
-        fg = VERTICAL_FILTER
+        fg = vfilter or VERTICAL_FILTER      # a complete filter_complex ending in format=yuv420p[v]
         if ass_name:
             fg = fg.replace("format=yuv420p[v]", f"ass={ass_name},format=yuv420p[v]")
         cmd += ["-filter_complex", fg, "-map", "[v]"]
@@ -46,16 +41,16 @@ def build_command(src: Path, out: Path, start: float, end: float, kind: str, has
 
 
 def render(src: Path, out: Path, start: float, end: float, kind: str, has_audio: bool,
-           ass_text: str | None = None) -> None:
+           ass_text: str | None = None, vfilter: str | None = None) -> None:
     """ass_text: optional subtitle file content to burn into the picture (original and vertical only)."""
     out.parent.mkdir(parents=True, exist_ok=True)
     if ass_text is None:
-        r = subprocess.run(build_command(src, out, start, end, kind, has_audio), capture_output=True, text=True)
+        r = subprocess.run(build_command(src, out, start, end, kind, has_audio, vfilter=vfilter), capture_output=True, text=True)
     else:
         import tempfile
         with tempfile.TemporaryDirectory(prefix="clippie-ass-") as d:
             (Path(d) / "subs.ass").write_text(ass_text, encoding="utf-8")
-            r = subprocess.run(build_command(src.resolve(), out.resolve(), start, end, kind, has_audio, "subs.ass"),
+            r = subprocess.run(build_command(src.resolve(), out.resolve(), start, end, kind, has_audio, "subs.ass", vfilter),
                                capture_output=True, text=True, cwd=d)
     if r.returncode != 0:
         raise RuntimeError(f"ffmpeg failed: {r.stderr.strip()[-500:]}")

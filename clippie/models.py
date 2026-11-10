@@ -33,6 +33,7 @@ class MediaAsset(Base):
     game: Mapped[str] = mapped_column(String(50), default="generic")  # manual override later
     profile_config: Mapped[dict] = mapped_column(JSON, default=dict)  # e.g. {"player_name": "...", "auto_captions": true}
     caption_style: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # see captions.CaptionStyle
+    layout: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # vertical layout, see layout.Layout
     meta: Mapped[dict] = mapped_column(JSON, default=dict)  # ffprobe summary
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

@@ -2,18 +2,20 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import tempfile
 import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import captions, jobs, library, media, pipeline, vlm  # noqa: F401  (pipeline registers handlers)
+from . import layout as layout_mod
 from .config import get_settings
 from .db import init_db, session
 from .models import Candidate, Export, GameEvent, Job, MediaAsset
@@ -43,6 +45,7 @@ def _asset(a: MediaAsset) -> dict:
     return {"id": a.id, "name": a.name, "status": a.status, "game": a.game, "meta": a.meta,
             "profile_config": a.profile_config or {},
             "caption_style": captions.CaptionStyle.from_dict(a.caption_style).to_dict(),
+            "layout": layout_mod.Layout.from_dict(a.layout).to_dict(),
             "source_url": a.source_url, "created_at": a.created_at.isoformat(),
             "thumb": f"/api/files/thumbs/{a.id}.jpg" if a.status == "ready" else None,
             "video": f"/api/files/{a.source_key}" if a.source_key else None}
@@ -217,6 +220,7 @@ class AssetPatch(BaseModel):
     game: str | None = None
     player_name: str | None = None
     caption_style: dict | None = None      # partial update; validated and clamped
+    layout: dict | None = None             # partial update of the vertical layout; validated
     auto_captions: bool | None = None
 
 
@@ -234,6 +238,11 @@ def patch_asset(asset_id: str, body: AssetPatch):
             a.profile_config = {**(a.profile_config or {}), "player_name": body.player_name.strip()[:64]}
         if body.auto_captions is not None:
             a.profile_config = {**(a.profile_config or {}), "auto_captions": body.auto_captions}
+        if body.layout is not None:
+            try:
+                a.layout = layout_mod.Layout.from_dict(body.layout, base=layout_mod.Layout.from_dict(a.layout)).to_dict()
+            except ValueError as e:
+                raise HTTPException(400, str(e))
         if body.caption_style is not None:
             try:
                 a.caption_style = captions.CaptionStyle.from_dict(body.caption_style,
@@ -289,6 +298,56 @@ def generate_captions(asset_id: str, body: CaptionsBody | None = None):
         a.profile_config = {**(a.profile_config or {}), "auto_captions": True}   # keep them for re-analysis too
         s.commit()
     return {"job_id": jobs.enqueue("captions", asset_id, {"force": bool(body and body.force)})}
+
+
+def _still(src: Path, t: float, *, graph: str | None = None, width: int | None = None) -> bytes:
+    """One JPEG frame at time t. graph = a filter_complex ending in [v]; otherwise the plain frame."""
+    cmd = ["ffmpeg", "-v", "error", "-ss", f"{t:.3f}", "-i", str(src), "-frames:v", "1"]
+    cmd += (["-filter_complex", graph, "-map", "[v]"] if graph else ["-vf", f"scale='min({width or 1280},iw)':-2"])
+    cmd += ["-q:v", "3", "-f", "image2pipe", "-vcodec", "mjpeg", "-"]
+    r = subprocess.run(cmd, capture_output=True, timeout=60)
+    if r.returncode != 0 or not r.stdout:
+        raise HTTPException(500, "could not read a frame: " + r.stderr.decode(errors="replace")[-200:])
+    return r.stdout
+
+
+def _pick_time(meta: dict, t: float | None) -> float:
+    dur = float(meta.get("duration") or 0)
+    return max(0.0, min(dur - 0.2 if dur > 0.4 else 0.0, dur / 2 if t is None else t))
+
+
+@app.get("/api/assets/{asset_id}/frame.jpg")
+def asset_frame(asset_id: str, t: float | None = None):
+    """A full-size still from the video (used to mark where the facecam is)."""
+    with session() as s:
+        a = _get_asset(s, asset_id)
+        if a.status != "ready":
+            raise HTTPException(409, "asset is not ready yet")
+        src, tt = get_storage().local_path(a.source_key), _pick_time(a.meta, t)
+    return Response(_still(src, tt), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+class LayoutPreviewBody(BaseModel):
+    layout: dict | None = None     # unsaved changes are previewed on top of the saved layout
+    t: float | None = None
+
+
+@app.post("/api/assets/{asset_id}/layout-preview")
+def layout_preview(asset_id: str, body: LayoutPreviewBody | None = None):
+    """One real frame of the vertical export, rendered with the same filter graph as the export itself."""
+    with session() as s:
+        a = _get_asset(s, asset_id)
+        if a.status != "ready":
+            raise HTTPException(409, "asset is not ready yet")
+        try:
+            lay = layout_mod.Layout.from_dict(body.layout if body else None, base=layout_mod.Layout.from_dict(a.layout))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        src, meta = get_storage().local_path(a.source_key), dict(a.meta)
+    tt = _pick_time(meta, body.t if body else None)
+    graph = layout_mod.vertical_filter(lay, meta.get("width", 1280), meta.get("height", 720))
+    graph = graph.replace("format=yuv420p[v]", "scale=540:960,format=yuv420p[v]")    # small, fast preview
+    return Response(_still(src, tt, graph=graph), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/assets/{asset_id}/events")

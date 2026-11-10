@@ -36,6 +36,7 @@ Self-hosted · local-first · no paid AI APIs
 | **AI verification** *(optional)* | Sends a few frames per clip to your own OpenAI-compatible vision model (for example vLLM serving Qwen2.5-VL) and shows a verdict with a one-line explanation. |
 | **Big, customizable subtitles** | Local speech-to-text (faster-whisper) on just each clip, shown live over the clip and burned into exports. Choose size (Small to Huge, or any size), font, colours, outline or solid box, position, words per line, ALL CAPS, and a highlighted spoken word, or start from a preset (Bold, Clean, Boxed, Shorts). |
 | **Review in the browser** | Approve or reject, and adjust a clip's length with 2-second nudges; it is re-trimmed automatically. |
+| **Facecam layout** | For vertical exports, put your webcam in its own band on top and the gameplay below. You drag a box over your webcam on a frame of your video, and a live 9:16 preview, rendered by the same ffmpeg filter as the export, shows exactly what you will get. |
 | **One format per export** | Choose **Vertical 9:16** (1080×1920 with a blurred background, no blind centre crop) or **Horizontal** (the original aspect ratio). One is enough; your choice is remembered. |
 | **Bulk export** | Tick any clips, or leave none ticked to export every approved clip, in one click. Then download all the finished files as a single zip. |
 | **Delete anything** | Remove a video and all of its clips, exports and files. Running jobs are cancelled. |
@@ -69,7 +70,8 @@ After pulling an update, restart the server (Ctrl+C, then run it again) so the b
 3. **Review clips.** Each clip appears already trimmed. Play it, check the AI note if enabled, then **Approve** or **Reject**. Use **Adjust length** to make a clip start earlier, end later, and so on; it is re-trimmed automatically.
 4. **Export.** Pick a **Format** (Vertical 9:16 or Horizontal) above the clips. **Export** on a clip renders just that clip. For many clips, tick the ones you want (or **Select all**) and use **Export N selected**; with nothing ticked the button exports **all approved clips**. Each finished file has a download link, and **Download zip** gives you every finished export for the chosen format in one file (`clip-01-vertical.mp4`, `clip-02-vertical.mp4`, ...).
 5. **Subtitles (optional).** Tick *Add subtitles to clips* when adding a video, or open the **Subtitles** panel and click **Generate subtitles**. Style them with the controls (the preview on every clip updates as you drag), then turn on *Show on clips and burn into exports*. Exports then include them.
-6. **Clean up.** **Delete** removes a video and everything derived from it.
+6. **Facecam layout (optional).** Open the **Vertical layout** panel, choose *Facecam on top*, and drag a box around your webcam on the frame shown. Adjust the band height and whether the gameplay shows the whole frame or is cropped to fill. Vertical exports use it from then on.
+7. **Clean up.** **Delete** removes a video and everything derived from it.
 
 Videos analyzed before clip trimming existed have no trimmed clips yet; use **Re-analyze** on them.
 
@@ -90,6 +92,23 @@ Videos analyzed before clip trimming existed have no trimmed clips yet; use **Re
   On Windows clippie finds them automatically. On Linux, install the CUDA 12 and cuDNN 9 libraries system-wide instead.
 
 > **Status:** checked with real speech (Windows text-to-speech) and the `tiny.en` model, and with mocked transcription in the tests, including pixel checks that the text is burned into both export shapes. It has **not** been evaluated on real gameplay audio, which is noisy and full of game sound, so expect more transcription mistakes there. Fonts come from your system; if a font is missing, the renderer substitutes another.
+
+## Vertical layouts
+
+Vertical (9:16, 1080x1920) exports have two layouts, set per video in the **Vertical layout** panel:
+
+| Layout | What you get |
+|---|---|
+| **Blurred background** (default) | The whole frame, centred on a blurred, enlarged copy of itself. No blind centre crop. |
+| **Facecam on top** | Your webcam in a band at the top (15% to 45% of the height) and the gameplay below it. |
+
+- **You mark the webcam yourself.** Pick a frame where it is visible, then drag a box around it. Nothing is auto-detected, so it works for any webcam position or overlay style.
+- **Gameplay area:** *Whole frame* keeps everything visible on a blurred fill; *Fill and crop* crops to fill the area, and you choose which part of the width to keep (left, centre or right) so the HUD you care about stays in view.
+- **Preview before you export:** the preview image is rendered with the same filter graph as the export, so what you see is what you get.
+- With *Whole frame*, the webcam also remains visible inside the gameplay picture, because the layout copies it to the top band rather than removing it from the frame. Horizontal exports are unaffected.
+- Subtitles still burn in at the bottom of the finished vertical frame.
+
+> **Status:** tested with synthetic video and pixel checks (the right pixels end up in the top band and the gameplay area), not yet with real streamer footage. If your webcam box is a different shape from the band it is scaled to fill it, which crops a little of the edges; draw the box close to the band's shape (wide, about 1080 by 576 for the default) for the cleanest result.
 
 ## Game profiles
 
@@ -192,7 +211,7 @@ See [`PLAN.md`](PLAN.md) for the phased plan and [`AUDIT.md`](AUDIT.md) for the 
 - [x] Among Us and GTA profiles (experimental)
 - [ ] Calibrating the game profiles on real footage
 - [x] Subtitles: local transcription, live preview, burned-in exports
-- [ ] Facecam layouts
+- [x] Facecam layout for vertical exports
 - [ ] More games (CS2, PUBG), automatic game identification
 - [ ] Postgres, S3/MinIO, Celery and Redis for the full deployment
 - [ ] Authentication, retention and cleanup
@@ -208,6 +227,7 @@ clippie/
 ├── progress.py       turns a video's jobs into pipeline steps for the UI
 ├── media.py          ffprobe, thumbnails, safe URL import (yt-dlp)
 ├── rendering.py      preview, original and vertical ffmpeg renders
+├── layout.py         vertical layouts (blurred background, facecam on top)
 ├── vlm.py            vision-model verification client
 ├── captions.py       speech-to-text, caption styles, ASS subtitle output
 ├── storage.py        local storage backend (S3 planned)
