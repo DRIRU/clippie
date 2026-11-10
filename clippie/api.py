@@ -8,10 +8,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import jobs, media, pipeline, vlm  # noqa: F401  (pipeline registers handlers)
+from . import jobs, library, media, pipeline, vlm  # noqa: F401  (pipeline registers handlers)
 from .config import get_settings
 from .db import init_db, session
 from .models import Candidate, Export, GameEvent, Job, MediaAsset
+from .progress import build_steps
 from .profiles import registry
 from .storage import get_storage
 
@@ -47,10 +48,22 @@ def _job(j: Job) -> dict:
             "updated_at": j.updated_at.isoformat() if j.updated_at else None}
 
 
+def _preview_url(key: str | None) -> str | None:
+    if not key:
+        return None
+    try:  # version by file time so a re-trimmed clip is never served from the browser cache
+        v = int(get_storage().local_path(key).stat().st_mtime)
+    except (OSError, ValueError):
+        v = 0
+    return f"/api/files/{key}?v={v}"
+
+
 def _cand(c: Candidate) -> dict:
     return {"id": c.id, "asset_id": c.asset_id, "start": c.start, "end": c.end, "peak": c.peak,
             "score": c.score, "score_breakdown": c.score_breakdown, "event_types": c.event_types,
             "verification": c.verification,
+            "preview_url": _preview_url(c.preview_key),
+            "length": round(c.end - c.start, 1),
             "status": c.status, "manual": c.manual}
 
 
@@ -128,18 +141,26 @@ def import_url(body: ImportBody):
     return {"asset_id": asset_id, "job_id": jobs.enqueue("import", asset_id, {"auto_analyze": body.auto_analyze})}
 
 
+def _enrich(s, a: MediaAsset) -> dict:
+    """Asset + counts + the pipeline steps the UI draws."""
+    d = _asset(a)
+    jobs_old_first = [_job(j) for j in s.query(Job).filter_by(asset_id=a.id).order_by(Job.created_at).all()]
+    cands = s.query(Candidate).filter_by(asset_id=a.id).all()
+    d["latest_job"] = jobs_old_first[-1] if jobs_old_first else None
+    d["candidate_count"] = len(cands)
+    d["verified_count"] = sum(1 for c in cands if c.verification)
+    d["previews_ready"] = sum(1 for c in cands if c.preview_key)
+    d["pipeline"] = build_steps(
+        asset={"status": a.status, "has_source_url": bool(a.source_url), "has_source": bool(a.source_key)},
+        jobs=jobs_old_first, has_hud=bool(registry.get(a.game).regions), vlm_on=vlm.enabled(),
+        candidate_count=len(cands), verified_count=d["verified_count"], previews_ready=d["previews_ready"])
+    return d
+
+
 @app.get("/api/assets")
 def list_assets():
     with session() as s:
-        rows = s.query(MediaAsset).order_by(MediaAsset.created_at.desc()).all()
-        out = []
-        for a in rows:
-            d = _asset(a)
-            j = s.query(Job).filter_by(asset_id=a.id).order_by(Job.created_at.desc()).first()
-            d["latest_job"] = _job(j) if j else None
-            d["candidate_count"] = s.query(Candidate).filter_by(asset_id=a.id).count()
-            out.append(d)
-        return out
+        return [_enrich(s, a) for a in s.query(MediaAsset).order_by(MediaAsset.created_at.desc()).all()]
 
 
 def _get_asset(s, asset_id: str) -> MediaAsset:
@@ -154,7 +175,15 @@ def get_asset(asset_id: str):
     with session() as s:
         a = _get_asset(s, asset_id)
         jl = s.query(Job).filter_by(asset_id=asset_id).order_by(Job.created_at.desc()).limit(10).all()
-        return {**_asset(a), "jobs": [_job(j) for j in jl]}
+        return {**_enrich(s, a), "jobs": [_job(j) for j in jl]}
+
+
+@app.delete("/api/assets/{asset_id}")
+def delete_asset(asset_id: str):
+    try:
+        return {"deleted": asset_id, **library.delete_asset(asset_id)}
+    except library.AssetNotFound:
+        raise HTTPException(404, "asset not found")
 
 
 class AssetPatch(BaseModel):
@@ -266,7 +295,9 @@ def create_candidate(body: CandidateCreate):
                       score_breakdown={}, event_types=["manual"], manual=True, status="approved")
         s.add(c)
         s.commit()
-        return _cand(c)
+        out = _cand(c)
+    jobs.enqueue("preview", body.asset_id, {"candidate_id": out["id"]})
+    return out
 
 
 def _get_cand(s, cid: str) -> Candidate:
@@ -283,14 +314,23 @@ def patch_candidate(cid: str, body: CandidatePatch):
         start = c.start if body.start is None else body.start
         end = c.end if body.end is None else body.end
         _validate_range(start, end, s.get(MediaAsset, c.asset_id).meta.get("duration", 0))
-        if (start, end) != (c.start, c.end) and c.verification:
+        changed = (start, end) != (c.start, c.end)
+        if changed and c.verification:
             # verdict was for different frames: drop it and restore the detector score
             bd = dict(c.score_breakdown or {})
             c.score = bd.get("detector_score", c.score)
             c.verification = None
+        old_preview = c.preview_key if changed else None
+        if changed:
+            c.preview_key = None
         c.start, c.end = start, end
         s.commit()
-        return _cand(c)
+        asset_id, out = c.asset_id, _cand(c)
+    if changed:
+        if old_preview:
+            get_storage().delete(old_preview)
+        jobs.enqueue("preview", asset_id, {"candidate_id": cid})   # re-render the trimmed clip
+    return out
 
 
 def _decide(cid: str, status: str):
@@ -354,7 +394,7 @@ def get_export(eid: str):
 # ---------- files (barebone local storage; supports Range for seeking) ----------
 @app.get("/api/files/{key:path}")
 def files(key: str):
-    if key.split("/")[0] not in ("sources", "thumbs", "exports"):
+    if key.split("/")[0] not in ("sources", "thumbs", "exports", "previews"):
         raise HTTPException(404)
     try:
         p = get_storage().local_path(key)

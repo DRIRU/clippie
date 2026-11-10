@@ -28,11 +28,14 @@ def build_command(src: Path, out: Path, start: float, end: float, kind: str, has
         cmd += ["-filter_complex", VERTICAL_FILTER, "-map", "[v]"]
     elif kind == "original":
         cmd += ["-map", "0:v:0"]
+    elif kind == "preview":  # small, fast, seekable clip for in-browser review
+        cmd += ["-map", "0:v:0", "-vf", r"scale=-2:min(540\,ih),format=yuv420p"]
     else:
         raise ValueError(f"unknown export kind {kind!r}")
     if has_audio:
-        cmd += ["-map", "0:a:0", "-c:a", "aac", "-b:a", "160k"]
-    cmd += _video_args() + ["-movflags", "+faststart", str(out)]
+        cmd += ["-map", "0:a:0", "-c:a", "aac", "-b:a", "96k" if kind == "preview" else "160k"]
+    cmd += (["-c:v", "libx264", "-preset", "veryfast", "-crf", "26"] if kind == "preview" else _video_args())
+    cmd += ["-movflags", "+faststart", str(out)]
     return cmd
 
 

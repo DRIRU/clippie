@@ -4,163 +4,212 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>clippie</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f0f2f5; --border:#e1e4ea; --text:#14171f; --muted:#667085;
-    --accent:#4f46e5; --accent-hover:#4338ca; --accent-soft:#eef0ff;
-    --ok:#12805c; --ok-soft:#e5f6ef; --warn:#9a6700; --warn-soft:#fff4d6; --bad:#c4321c; --bad-soft:#fdeceb;
-    --shadow:0 1px 2px rgba(16,24,40,.06);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg:#0c0e13; --surface:#14171e; --surface-2:#1b1f28; --border:#262b36; --text:#e8eaf0; --muted:#8d95a6;
-      --accent:#7c83ff; --accent-hover:#9399ff; --accent-soft:#1d2040;
-      --ok:#47c79a; --ok-soft:#12291f; --warn:#e3b341; --warn-soft:#2d2410; --bad:#ff7b6b; --bad-soft:#2e1714;
-      --shadow:none;
-    }
+    --bg:#0e1015; --bar:#12151c; --surface:#151821; --surface-2:#1c202b; --raised:#262b39; --border:#232834; --border-2:#2b3140;
+    --text:#e9ebf1; --text-2:#b4bccb; --muted:#98a1b3;
+    --accent:#5a60ee; --accent-hover:#6a70f5; --accent-text:#aeb3ff; --accent-soft:#1d2040; --accent-ring:#8f95ff;
+    --ok:#5fd6a4; --ok-soft:#14342a; --warn:#f0c24d; --warn-soft:#3a2e0f; --bad:#ff8d80; --bad-soft:#2e1a1a;
   }
   * { box-sizing:border-box }
-  html { color-scheme: light dark }
-  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif; -webkit-font-smoothing:antialiased }
+  html { color-scheme: dark }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased }
+  button { font:inherit }
 
-  header { position:sticky; top:0; z-index:5; background:var(--surface); border-bottom:1px solid var(--border); }
-  .bar-in { max-width:1360px; margin:auto; padding:0 20px; height:52px; display:flex; align-items:center; gap:12px }
-  .brand { font-weight:700; font-size:17px; letter-spacing:-.01em }
-  .brand b { color:var(--accent) }
-  .tag { color:var(--muted); font-size:12px; padding-left:12px; border-left:1px solid var(--border) }
+  header { position:sticky; top:0; z-index:5; height:56px; padding:0 28px; display:flex; align-items:center; gap:14px; background:var(--bar); border-bottom:1px solid var(--border) }
+  .brand { font-size:18px; font-weight:700; letter-spacing:-.01em }
+  .brand b { color:var(--accent-ring); font-weight:700 }
+  .tag { color:var(--muted); font-size:13px; padding-left:14px; border-left:1px solid var(--border) }
 
-  main { max-width:1360px; margin:auto; padding:20px; display:grid; grid-template-columns:minmax(300px,360px) minmax(0,1fr); gap:20px; align-items:start }
-  @media (max-width:960px){ main{ grid-template-columns:1fr } }
+  main { max-width:1500px; margin:auto; padding:24px 28px; display:grid; grid-template-columns:minmax(300px,340px) minmax(0,1fr); gap:24px; align-items:start }
+  @media (max-width:960px){ main { grid-template-columns:minmax(0,1fr); padding:16px } header { padding:0 16px } }
   main > * { min-width:0 }
   .stack { display:grid; grid-template-columns:minmax(0,1fr); gap:16px }
-  .card { min-width:0 }
-  .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow) }
-  .card-h { padding:14px 16px 0; font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted) }
-  .card-b { padding:14px 16px 16px }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; min-width:0 }
+  .pad { padding:18px }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin-bottom:12px }
 
-  .tabs { display:inline-flex; background:var(--surface-2); border-radius:8px; padding:3px; margin-bottom:12px }
-  .tabs button { background:none; border:0; color:var(--muted); padding:5px 14px; border-radius:6px; font-weight:600; cursor:pointer; font-size:13px }
-  .tabs button.on { background:var(--surface); color:var(--text); box-shadow:var(--shadow) }
+  .tabs { display:inline-flex; gap:4px; padding:3px; background:var(--surface-2); border-radius:9px }
+  .tabs button { border:0; background:transparent; color:var(--muted); font-weight:600; font-size:13px; padding:6px 14px; border-radius:7px; cursor:pointer }
+  .tabs button.on { background:var(--raised); color:var(--text) }
 
-  input[type=text],input[type=number],select { font:inherit; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 10px; width:100%; min-width:0 }
-  input:focus,select:focus { outline:2px solid var(--accent); outline-offset:-1px; border-color:transparent }
-  input[type=number] { width:84px }
+  .field { display:grid; gap:6px; margin-top:14px; font-size:12px; font-weight:600; color:var(--muted) }
+  input[type=text],select { font:inherit; font-weight:400; height:44px; width:100%; min-width:0; padding:0 12px; background:var(--bg); color:var(--text); border:1px solid var(--border-2); border-radius:9px }
+  select.sm { height:36px; width:auto }
   input[type=file] { font:inherit; color:var(--muted); width:100% }
-  label.check { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:13px }
-  .field { display:grid; gap:5px; margin-top:12px }
-  .field > span { font-size:12px; font-weight:600; color:var(--muted) }
-  .grid2 { display:flex; gap:10px }
-  .grid2 .field { flex:1; min-width:0 }
+  input:focus-visible,select:focus-visible,button:focus-visible,video:focus-visible { outline:2px solid var(--accent-ring); outline-offset:2px }
+  label.check { display:flex; align-items:center; gap:9px; color:var(--text-2); margin-top:14px }
+  label.check input { width:16px; height:16px; accent-color:var(--accent) }
 
-  button.btn { font:inherit; font-weight:600; border:1px solid transparent; background:var(--accent); color:#fff; border-radius:8px; padding:8px 14px; cursor:pointer; white-space:nowrap }
-  button.btn:hover:not(:disabled) { background:var(--accent-hover) }
-  button.btn.secondary { background:var(--surface); color:var(--text); border-color:var(--border) }
-  button.btn.secondary:hover:not(:disabled) { background:var(--surface-2) }
-  button.btn.ok { background:var(--ok-soft); color:var(--ok); border-color:transparent }
-  button.btn.bad { background:var(--bad-soft); color:var(--bad); border-color:transparent }
-  button.btn.sm { padding:5px 10px; font-size:13px }
-  button.btn:disabled { opacity:.45; cursor:not-allowed }
-  .full { width:100% }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; font-weight:600; font-size:13px; padding:8px 14px; border:1px solid transparent; border-radius:9px; cursor:pointer; background:var(--accent); color:#fff; white-space:nowrap }
+  .btn:hover:not(:disabled) { background:var(--accent-hover) }
+  .btn.lg { height:44px; font-size:14px }
+  .btn.full { width:100%; margin-top:16px }
+  .btn.ghost { background:transparent; border-color:var(--border-2); color:var(--text) }
+  .btn.ghost:hover:not(:disabled) { background:var(--surface-2) }
+  .btn.ok { background:var(--ok-soft); color:var(--ok) }
+  .btn.ok:hover:not(:disabled) { background:#1a4535 }
+  .btn.bad { background:var(--bad-soft); color:var(--bad) }
+  .btn.bad:hover:not(:disabled) { background:#3a2020 }
+  .btn.link { background:transparent; color:var(--accent-text); padding:8px 10px }
+  .btn.link:hover:not(:disabled) { background:var(--accent-soft) }
+  .btn:disabled { opacity:.45; cursor:not-allowed }
 
-  .chip { display:inline-flex; align-items:center; font-size:12px; font-weight:600; padding:2px 9px; border-radius:999px; background:var(--surface-2); color:var(--muted); white-space:nowrap }
+  .chip { display:inline-flex; align-items:center; font-size:11px; font-weight:600; padding:2px 9px; border-radius:999px; background:var(--raised); color:var(--text-2); white-space:nowrap }
   .chip.done,.chip.approved { background:var(--ok-soft); color:var(--ok) }
   .chip.running,.chip.queued { background:var(--warn-soft); color:var(--warn) }
   .chip.failed,.chip.rejected { background:var(--bad-soft); color:var(--bad) }
-  .chip.event { background:var(--accent-soft); color:var(--accent) }
-
-  .muted { color:var(--muted); font-size:13px }
-  .toast { margin-top:10px; font-size:13px; padding:8px 10px; border-radius:8px; background:var(--surface-2); color:var(--muted) }
+  .chip.event { background:var(--accent-soft); color:var(--accent-text); font-size:12px; padding:2px 10px }
+  .muted { color:var(--muted) }
+  .toast { margin-top:12px; padding:9px 12px; border-radius:9px; background:var(--surface-2); color:var(--text-2); font-size:13px }
   .toast.err { background:var(--bad-soft); color:var(--bad) }
   .toast:empty { display:none }
 
-  .asset { display:flex; gap:12px; padding:10px; border:1px solid transparent; border-radius:9px; cursor:pointer }
+  /* library */
+  .asset { display:flex; gap:12px; padding:10px; border:1px solid transparent; border-radius:10px; cursor:pointer }
   .asset:hover { background:var(--surface-2) }
-  .asset.sel { background:var(--accent-soft); border-color:var(--accent) }
-  .thumb { width:96px; height:54px; border-radius:6px; object-fit:cover; background:var(--surface-2); flex:none }
-  .asset > div { min-width:0 }
-  .asset .t { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
-  .meter { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin-top:6px }
-  .meter > i { display:block; height:100%; background:var(--accent); transition:width .3s }
+  .asset.sel { background:#1a1d33; border-color:var(--accent) }
+  .thumb { flex:0 0 88px; width:88px; height:50px; border-radius:7px; object-fit:cover; background:linear-gradient(135deg,#2a2f45,#171a28) }
+  .asset .t { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .asset > div { min-width:0; flex:1 }
+  .meter { height:4px; border-radius:2px; background:var(--border-2); overflow:hidden; margin-top:6px }
+  .meter > i { display:block; height:100%; background:var(--accent-ring); border-radius:2px; transition:width .4s }
+  .meter.big { height:6px; border-radius:3px; margin:14px 0 18px; background:var(--border) }
+  .meter.big > i { background:#7b82ff }
 
-  .empty { text-align:center; padding:56px 20px; color:var(--muted) }
-  .empty h3 { margin:0 0 6px; color:var(--text); font-size:16px }
+  /* detail header */
+  .head { display:flex; flex-wrap:wrap; gap:16px; align-items:center; padding:18px 20px }
+  .head .ttl { flex:1 1 280px; min-width:0 }
+  .head h2 { margin:0; font-size:19px; font-weight:700; letter-spacing:-.01em; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+  .acts { display:flex; flex-wrap:wrap; gap:8px }
+  .settings { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; padding:0 20px 18px }
+  .settings .field { margin:0; min-width:200px }
+  .banner { margin:0 20px 18px; padding:10px 12px; border-radius:9px; background:var(--bad-soft); color:var(--bad); display:flex; gap:12px; align-items:center; justify-content:space-between }
 
-  .detail-h { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; padding:16px }
-  .detail-h h2 { margin:0; font-size:18px; letter-spacing:-.01em; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
-  .detail-h .sp { flex:1; min-width:min(200px,100%) }
-  .actions { display:flex; gap:8px; flex-wrap:wrap }
-  .settings { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; padding:0 16px 16px }
-  .settings .field { margin:0 }
-  .banner { margin:0 16px 16px; padding:10px 12px; border-radius:8px; background:var(--bad-soft); color:var(--bad); display:flex; gap:12px; align-items:center; justify-content:space-between }
+  /* pipeline */
+  .pipe { padding:20px }
+  .pipe-h { display:flex; flex-wrap:wrap; gap:6px 16px; align-items:baseline; justify-content:space-between }
+  .pipe-h b { font-size:16px }
+  .steps { display:flex; flex-wrap:wrap; gap:12px }
+  .step { flex:1 1 120px; min-width:110px; padding:14px; border-radius:10px; border:1px solid var(--border); background:var(--bar); display:grid; gap:10px; align-content:start }
+  .step.running { border-color:#3b4380; background:#171a2c }
+  .step.failed { border-color:#6b2f2a; background:#241716 }
+  .step .l { font-weight:600; color:var(--muted) }
+  .step.done .l,.step.running .l { color:var(--text) }
+  .step.running .l { color:#fff }
+  .step .s { font-size:12px; color:#7d8699; margin-top:2px }
+  .step.done .s { color:var(--ok) } .step.running .s { color:var(--accent-text) } .step.failed .s { color:var(--bad) }
+  .dot { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center }
+  .dot.done { background:var(--ok-soft) }
+  .dot.running { border:3px solid #2d3350; border-top-color:var(--accent-ring); animation:spin .9s linear infinite }
+  .dot.pending { border:2px dashed #3a4156 }
+  .dot.failed { background:var(--bad-soft) }
+  @keyframes spin { to { transform:rotate(360deg) } }
+  @media (prefers-reduced-motion: reduce) { .dot.running { animation:none; border-top-color:#2d3350; border-right-color:var(--accent-ring) } }
+  .pipe-done { padding:14px 20px; display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center }
+  .pipe-done .ok { display:flex; align-items:center; gap:8px; font-weight:600 }
+  .pipe-done .ok .dot { width:22px; height:22px }
+  .pipe-done span.i { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:13px }
 
-  .list-h { display:flex; align-items:center; justify-content:space-between; margin:20px 2px 10px }
-  .list-h h3 { margin:0; font-size:15px }
-  .cands { display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(min(380px,100%),1fr)) }
-  @media (max-width:520px){ .cands { grid-template-columns:1fr } }
-  .cand { overflow:hidden; border-left:3px solid var(--border) }
-  .cand.approved { border-left-color:var(--ok) } .cand.rejected { border-left-color:var(--bad); opacity:.7 }
-  .cand video { width:100%; display:block; background:#000; aspect-ratio:16/9 }
-  .cand-b { padding:12px 14px 14px; display:grid; gap:12px }
-  .cand-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap }
-  .score { font-size:22px; font-weight:700; letter-spacing:-.02em; margin-right:2px }
-  .score small { font-size:12px; color:var(--muted); font-weight:500 }
-  .sigs { display:grid; gap:5px }
-  .sig { display:grid; grid-template-columns:96px 1fr 34px; align-items:center; gap:8px; font-size:12px; color:var(--muted) }
-  .sig .meter { margin:0; height:5px }
-  .sig .meter i { background:var(--muted) }
-  .sig.game .meter i { background:var(--accent) }
-  .trim { display:flex; align-items:center; gap:8px; flex-wrap:wrap }
-  .trim span { font-size:12px; color:var(--muted); font-weight:600 }
-  .btns { display:flex; gap:8px; flex-wrap:wrap }
-  .ai { border:1px solid var(--border); border-radius:8px; padding:9px 11px; background:var(--surface-2); font-size:13px; display:grid; gap:4px }
-  .ai .h { display:flex; gap:8px; align-items:center; flex-wrap:wrap }
-  .ai .why { color:var(--muted) }
+  /* clips */
+  .bar { display:flex; flex-wrap:wrap; gap:12px 16px; align-items:center; justify-content:space-between; margin:8px 2px 14px }
+  .bar h3 { margin:0; font-size:16px; display:inline }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr)); gap:16px }
+  .clip { overflow:hidden; display:flex; flex-direction:column; border-left-width:1px }
+  .clip.approved { border-color:#2c5a49 } .clip.rejected { opacity:.65 }
+  .media { position:relative; aspect-ratio:16/9; background:#000; display:flex; align-items:center; justify-content:center }
+  .media video { width:100%; height:100%; display:block; background:#000 }
+  .media .wait { display:grid; gap:10px; justify-items:center; color:var(--muted); font-size:13px }
+  .media.pending { background:linear-gradient(135deg,#1a1e29,#12151c) }
+  .tag-top { position:absolute; left:10px; top:10px; font-size:12px; font-weight:700; padding:3px 10px; border-radius:999px; background:var(--accent); color:#fff; pointer-events:none }
+  .len { position:absolute; right:10px; top:10px; font-size:12px; font-weight:600; padding:2px 8px; border-radius:6px; background:rgba(14,16,21,.8); color:#fff; pointer-events:none }
+  .cb { padding:14px 16px 16px; display:grid; gap:12px }
+  .score-row { display:flex; align-items:center; gap:10px }
+  .score { font-size:22px; font-weight:700; letter-spacing:-.02em }
+  .score-row .meter { flex:1; margin:0; height:6px; background:var(--border) }
+  .score-row .meter > i { background:#7b82ff }
+  .chips { display:flex; flex-wrap:wrap; gap:6px }
+  .ai { display:flex; gap:9px; padding:10px 12px; border-radius:9px; background:var(--bar); border:1px solid var(--border); color:var(--text-2); font-size:13px }
+  .ai svg { flex:0 0 auto; margin-top:2px }
+  .ai b { color:var(--text); font-weight:600 }
+  .adjust { padding:12px; border-radius:9px; border:1px solid var(--border-2); display:grid; gap:10px }
+  .adjust .r { display:flex; flex-wrap:wrap; gap:8px; align-items:center }
+  .adjust .r > span { font-size:12px; font-weight:600; color:var(--muted); width:44px }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center }
+  .actions .push { margin-left:auto }
   .exports { display:grid; gap:4px; font-size:13px }
   .exports div { display:flex; gap:8px; align-items:center }
-  a { color:var(--accent); font-weight:600; text-decoration:none } a:hover { text-decoration:underline }
+  a { color:var(--accent-text); font-weight:600; text-decoration:none } a:hover { text-decoration:underline }
+
+  .skel { overflow:hidden }
+  .skel .a { aspect-ratio:16/9; background:linear-gradient(135deg,#1a1e29,#12151c) }
+  .skel .b { padding:14px; display:grid; gap:10px }
+  .skel .b i { display:block; height:12px; border-radius:6px; background:var(--border) }
+  .empty { text-align:center; padding:56px 20px; color:var(--muted) }
+  .empty h3 { margin:0 0 6px; color:var(--text); font-size:16px }
 </style>
 </head>
 <body>
-<header><div class="bar-in"><span class="brand">clip<b>pie</b></span><span class="tag">Highlight clips from gaming video</span></div></header>
+<header><span class="brand">clip<b>pie</b></span><span class="tag">Highlight clips from gaming video</span></header>
 <main>
-  <section class="stack">
-    <div class="card">
-      <div class="card-h">Add video</div>
-      <div class="card-b">
-        <div class="tabs"><button id="tabLink" class="on">Link</button><button id="tabFile">Upload</button></div>
-        <div id="paneLink">
-          <input type="text" id="url" placeholder="Paste a YouTube or Twitch VOD link">
-        </div>
-        <div id="paneFile" style="display:none"><input type="file" id="file" accept="video/*,.mkv"></div>
-        <div class="grid2">
-          <label class="field"><span>Game</span><select id="impGame"></select></label>
-          <label class="field" id="impNameWrap" style="display:none"><span>In-game name</span><input type="text" id="impName" placeholder="e.g. Phoenix"></label>
-        </div>
-        <label class="check" style="margin-top:12px"><input type="checkbox" id="impAuto" checked> Analyze automatically after import</label>
-        <button class="btn full" id="addBtn" style="margin-top:14px">Import</button>
-        <div id="addMsg" class="toast"></div>
-      </div>
+  <aside class="stack">
+    <div class="card pad">
+      <div class="eyebrow" style="margin-bottom:14px">Add video</div>
+      <div class="tabs"><button id="tabLink" class="on">Link</button><button id="tabFile">Upload</button></div>
+      <div id="paneLink" style="margin-top:14px"><input type="text" id="url" aria-label="Video link" placeholder="Paste a YouTube or Twitch VOD link"></div>
+      <div id="paneFile" style="margin-top:14px;display:none"><input type="file" id="file" accept="video/*,.mkv" aria-label="Video file"></div>
+      <label class="field">Game profile<select id="impGame"></select></label>
+      <label class="field" id="impNameWrap" style="display:none">In-game name<input type="text" id="impName" placeholder="e.g. Phoenix"></label>
+      <label class="check"><input type="checkbox" id="impAuto" checked> Analyze automatically after import</label>
+      <button class="btn lg full" id="addBtn">Import</button>
+      <div id="addMsg" class="toast" role="status"></div>
     </div>
-    <div class="card">
-      <div class="card-h">Library</div>
-      <div class="card-b" style="padding-top:8px"><div id="assets"></div></div>
+    <div class="card pad">
+      <div class="eyebrow" style="margin-bottom:8px">Library</div>
+      <div id="assets"></div>
     </div>
+  </aside>
+  <section class="stack" id="detail">
+    <div id="head"></div>
+    <div id="pipe"></div>
+    <div id="clipsArea"></div>
   </section>
-  <section id="detail"></section>
 </main>
 <script>
 const $ = id => document.getElementById(id);
-let selected = null, profiles = [], mode = 'link', sortBy = 'time', vlmEnabled = false;
+let selected = null, profiles = [], mode = 'link', vlmEnabled = false;
+let filter = 'all', sortBy = 'best';
+let sigs = {}, lastAsset = null;
+const openAdjust = new Set();
 
 function el(tag, props = {}, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
     if (k === 'class') e.className = v; else if (k.startsWith('on')) e[k] = v;
-    else if (typeof v === 'boolean') { if (v) e.setAttribute(k, ''); } else e.setAttribute(k, v);
+    else if (typeof v === 'boolean') { if (v) e.setAttribute(k, ''); } else if (v != null) e.setAttribute(k, v);
   }
-  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  for (const k of kids.flat()) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(String(k)));
   return e;
 }
+const NS = 'http://www.w3.org/2000/svg';
+function svg(paths, size = 15, stroke = 'currentColor', w = 2.5, fill = 'none') {
+  const s = document.createElementNS(NS, 'svg');
+  s.setAttribute('width', size); s.setAttribute('height', size); s.setAttribute('viewBox', '0 0 24 24');
+  s.setAttribute('fill', fill); s.setAttribute('stroke', stroke); s.setAttribute('stroke-width', w);
+  s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true');
+  for (const d of paths) { const p = document.createElementNS(NS, 'path'); p.setAttribute('d', d); s.append(p); }
+  return s;
+}
+const icon = {
+  check: (n = 15, c = 'var(--ok)') => svg(['M5 12.5l4.5 4.5L19 7.5'], n, c, 3),
+  x: (n = 15, c = 'var(--bad)') => svg(['M6 6l12 12', 'M18 6L6 18'], n, c, 3),
+  trash: () => svg(['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'], 15, 'currentColor', 2),
+  chev: () => svg(['M6 9l6 6 6-6'], 14, 'currentColor', 2.5),
+  spark: () => svg(['M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z', 'M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z'], 15, 'var(--accent-ring)', 2),
+};
+
 const api = async (path, opts = {}) => {
   const r = await fetch('/api' + path, opts);
   if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m } catch {} throw new Error(m) }
@@ -168,11 +217,11 @@ const api = async (path, opts = {}) => {
 };
 const send = (method, p, body) => api(p, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
 const post = (p, b) => send('POST', p, b), patch = (p, b) => send('PATCH', p, b);
-const fmt = s => { s = Math.max(0, s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = Math.floor(s % 60); return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0') };
+const clock = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0') };
 const chip = (s, cls) => el('span', { class: 'chip ' + (cls || s) }, s);
 const label = t => t.replace(/_/g, ' ');
-
-function toast(msg, err) { const t = $('addMsg'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); }
+const toast = (msg, err) => { const t = $('addMsg'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); };
+const isBusy = a => !!a.latest_job && ['running', 'queued'].includes(a.latest_job.status);
 
 // ---------- add video ----------
 function setMode(m) {
@@ -184,155 +233,207 @@ function setMode(m) {
 $('tabLink').onclick = () => setMode('link'); $('tabFile').onclick = () => setMode('file');
 $('addBtn').onclick = async () => {
   try {
+    let r;
     if (mode === 'link') {
       const u = $('url').value.trim(); if (!u) return;
-      const r = await post('/assets/import-url', { url: u, game: $('impGame').value, player_name: $('impName').value, auto_analyze: $('impAuto').checked });
-      $('url').value = ''; toast('Import started.'); selected = r.asset_id;
+      r = await post('/assets/import-url', { url: u, game: $('impGame').value, player_name: $('impName').value, auto_analyze: $('impAuto').checked });
+      $('url').value = ''; toast('Import started. Follow its progress below.');
     } else {
       const f = $('file').files[0]; if (!f) return;
       toast('Uploading ' + f.name + '...');
       const fd = new FormData(); fd.append('file', f);
-      const r = await api('/assets/upload', { method: 'POST', body: fd }); toast('Upload complete.'); selected = r.asset_id;
+      r = await api('/assets/upload', { method: 'POST', body: fd }); toast('Upload complete.');
     }
-    refresh();
+    select(r.asset_id);
   } catch (x) { toast(x.message, true) }
 };
 
 // ---------- library ----------
-async function loadAssets() {
-  const list = await api('/assets');
+function renderLibrary(list) {
   const box = $('assets'); box.replaceChildren();
-  if (!list.length) box.append(el('div', { class: 'muted', style: 'padding:8px' }, 'No videos yet. Add one above.'));
+  if (!list.length) { box.append(el('div', { class: 'muted', style: 'padding:8px 4px' }, 'No videos yet. Paste a link above to start.')); return; }
   for (const a of list) {
-    const j = a.latest_job;
-    const busy = j && (j.status === 'running' || j.status === 'queued');
-    const meta = a.meta.duration ? `${fmt(a.meta.duration)} · ${a.meta.height}p · ${a.candidate_count} candidates` : a.status;
-    box.append(el('div', { class: 'asset' + (selected === a.id ? ' sel' : ''), onclick: () => select(a.id) },
-      el('img', { class: 'thumb', ...(a.thumb ? { src: a.thumb } : {}) }),
-      el('div', { style: 'flex:1;min-width:0' },
+    const p = a.pipeline, j = a.latest_job, busy = isBusy(a);
+    const status = p.state === 'done' ? 'done' : p.state === 'failed' ? 'failed' : busy ? 'running' : a.status === 'ready' ? 'ready' : 'waiting';
+    const meta = a.meta.duration ? `${clock(a.meta.duration)} · ${a.meta.height}p${a.candidate_count ? ' · ' + a.candidate_count + ' clips' : ''}` : (a.source_url ? 'Importing' : 'Preparing');
+    box.append(el('div', { class: 'asset' + (selected === a.id ? ' sel' : ''), tabindex: '0', role: 'button', onclick: () => select(a.id), onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(a.id) } } },
+      el('img', { class: 'thumb', alt: '', ...(a.thumb ? { src: a.thumb } : {}) }),
+      el('div', {},
         el('div', { class: 't', title: a.name }, a.name),
-        el('div', { class: 'muted' }, meta),
-        j ? el('div', { style: 'margin-top:5px;display:flex;gap:6px;align-items:center' }, chip(j.status), el('span', { class: 'muted' }, j.kind + (j.stage && busy ? ' · ' + j.stage : ''))) : null,
-        busy ? el('div', { class: 'meter' }, el('i', { style: `width:${(j.progress || 0) * 100}%` })) : null)));
+        el('div', { class: 'muted', style: 'font-size:12px' }, meta),
+        el('div', { style: 'margin-top:4px;display:flex;gap:6px;align-items:center' }, chip(status), p.state === 'running' ? el('span', { class: 'muted', style: 'font-size:12px' }, p.label.split('· ')[1] || '') : null),
+        p.state === 'running' || p.state === 'waiting' ? el('div', { class: 'meter' }, el('i', { style: `width:${Math.round(p.overall * 100)}%` })) : null)));
   }
-  return list;
 }
-async function select(id) { selected = id; await refresh(); }
 
-// ---------- detail ----------
-async function refresh() {
-  const list = await loadAssets();
-  const a = list.find(x => x.id === selected);
-  const d = $('detail');
-  if (!a) {
-    d.replaceChildren(el('div', { class: 'card' }, el('div', { class: 'empty' },
-      el('h3', {}, 'No video selected'), el('div', {}, 'Paste a link or upload a video, then choose it from the library to review highlight candidates.'))));
+// ---------- pipeline ----------
+function dot(state) {
+  const d = el('div', { class: 'dot ' + state });
+  if (state === 'done') d.append(icon.check(15));
+  if (state === 'failed') d.append(icon.x(14));
+  return d;
+}
+function renderPipeline(a) {
+  const P = a.pipeline, box = $('pipe');
+  if (P.state === 'done') {
+    box.replaceChildren(el('div', { class: 'card pipe-done' },
+      el('div', { class: 'ok' }, el('div', { class: 'dot done' }, icon.check(12)), 'Analysis complete'),
+      ...P.steps.map(s => el('span', { class: 'i' }, icon.check(13), s.label))));
     return;
   }
-  const cands = await api(`/assets/${a.id}/candidates`);
-  const busy = list.some(x => x.latest_job && ['running', 'queued'].includes(x.latest_job.status));
-  const prof = profiles.find(p => p.id === a.game) || profiles[0];
+  const sub = s => s.state === 'done' ? 'Done' : s.state === 'running' ? (s.progress > 0 ? Math.round(s.progress * 100) + '%' : 'Working') : s.state === 'failed' ? 'Failed' : 'Waiting';
+  const failed = P.steps.find(s => s.state === 'failed');
   const j = a.latest_job;
-
-  const gameSel = el('select', { onchange: async e => { await patch(`/assets/${a.id}`, { game: e.target.value }); refresh(); } },
-    ...profiles.map(p => { const o = el('option', { value: p.id }, p.name); if (p.id === a.game) o.selected = true; return o; }));
-  const nameIn = el('input', { type: 'text', placeholder: 'Your in-game name', value: (a.profile_config || {}).player_name || '' });
-  const settings = el('div', { class: 'settings' },
-    el('label', { class: 'field', style: 'min-width:220px' }, el('span', {}, 'Game profile'), gameSel),
-    prof && prof.needs_player_name ? el('label', { class: 'field', style: 'min-width:180px' }, el('span', {}, 'In-game name'), nameIn) : null,
-    prof && prof.needs_player_name ? el('button', { class: 'btn secondary', onclick: async () => { await patch(`/assets/${a.id}`, { player_name: nameIn.value }); toast('Name saved.'); } }, 'Save name') : null,
-    prof && prof.note ? el('span', { class: 'muted', style: 'flex:1;min-width:200px' }, prof.note) : null);
-
-  const header = el('div', { class: 'card' },
-    el('div', { class: 'detail-h' },
-      el('div', { class: 'sp' }, el('h2', { title: a.name }, a.name),
-        el('div', { class: 'muted', style: 'margin-top:4px' }, a.meta.duration ? `${fmt(a.meta.duration)} · ${a.meta.width}x${a.meta.height} · ${Math.round(a.meta.fps)} fps` : a.status)),
-      el('div', { class: 'actions' },
-        vlmEnabled ? el('button', { class: 'btn secondary', disabled: a.status !== 'ready' || busy || !cands.length, title: 'Ask the vision model to check each candidate', onclick: async () => { try { await post(`/assets/${a.id}/verify`, { force: true }); refresh(); } catch (x) { toast(x.message, true) } } }, 'Verify with AI') : null,
-        el('button', { class: 'btn secondary', disabled: a.status !== 'ready' || busy, title: 'Recompute all signals from scratch', onclick: async () => { await post(`/assets/${a.id}/analyze`, { force: true }); refresh(); } }, 'Re-analyze'),
-        el('button', { class: 'btn', disabled: a.status !== 'ready' || busy, onclick: async () => { await post(`/assets/${a.id}/analyze`, { force: false }); refresh(); } }, 'Analyze'))),
-    j && j.status === 'failed' ? el('div', { class: 'banner' }, el('span', {}, j.error || 'The last job failed.'),
-      el('button', { class: 'btn secondary sm', onclick: async () => { await post(`/jobs/${j.id}/retry`); refresh(); } }, 'Retry')) : null,
-    settings);
-
-  const sorted = [...cands].sort((x, y) => sortBy === 'score' ? y.score - x.score : x.start - y.start);
-  const sortSel = el('select', { style: 'width:auto', onchange: e => { sortBy = e.target.value; refresh(); } },
-    el('option', { value: 'time' }, 'Sort by time'), el('option', { value: 'score' }, 'Sort by score'));
-  sortSel.value = sortBy;
-  const listHead = el('div', { class: 'list-h' }, el('h3', {}, `Candidates (${cands.length})`), cands.length ? sortSel : null);
-  const body = cands.length ? el('div', { class: 'cands' }, ...sorted.map(c => candCard(a, c)))
-    : el('div', { class: 'card' }, el('div', { class: 'empty' }, el('h3', {}, a.status === 'ready' ? 'No candidates yet' : 'Preparing video'),
-      el('div', {}, a.status === 'ready' ? 'Click Analyze to scan this video for highlights.' : 'The video is still being processed.')));
-  d.replaceChildren(header, listHead, body);
+  box.replaceChildren(el('div', { class: 'card pipe' },
+    el('div', { class: 'pipe-h' }, el('b', {}, 'Analysis pipeline'), el('span', { class: 'muted' }, P.label)),
+    el('div', { class: 'meter big', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': Math.round(P.overall * 100) }, el('i', { style: `width:${Math.round(P.overall * 100)}%` })),
+    failed ? el('div', { class: 'banner', style: 'margin:0 0 16px' }, el('span', {}, `${failed.label} failed${failed.detail ? ': ' + failed.detail : ''}`),
+      j && j.status === 'failed' ? el('button', { class: 'btn ghost', onclick: async () => { await post(`/jobs/${j.id}/retry`); poll(true); } }, 'Retry') : null) : null,
+    el('div', { class: 'steps' }, ...P.steps.map(s => el('div', { class: 'step ' + s.state },
+      el('div', { style: 'height:28px;display:flex;align-items:center' }, dot(s.state)),
+      el('div', {}, el('div', { class: 'l' }, s.label), el('div', { class: 's' }, sub(s))),
+      s.state === 'running' && s.progress > 0 ? el('div', { class: 'meter', style: 'margin:0' }, el('i', { style: `width:${Math.round(s.progress * 100)}%` })) : null)))));
 }
 
-function signal(name, value, game) {
-  if (value == null) return null;
-  return el('div', { class: 'sig' + (game ? ' game' : '') }, el('span', {}, name),
-    el('div', { class: 'meter' }, el('i', { style: `width:${Math.min(1, value) * 100}%` })), el('span', {}, value.toFixed(2)));
+// ---------- header + settings ----------
+function renderHead(a) {
+  const busy = isBusy(a), prof = profiles.find(p => p.id === a.game) || profiles[0];
+  const gameSel = el('select', { 'aria-label': 'Game profile', onchange: async e => { await patch(`/assets/${a.id}`, { game: e.target.value }); poll(true); } },
+    ...profiles.map(p => { const o = el('option', { value: p.id }, p.name); if (p.id === a.game) o.selected = true; return o; }));
+  const nameIn = el('input', { type: 'text', 'aria-label': 'In-game name', placeholder: 'Your in-game name', value: (a.profile_config || {}).player_name || '' });
+  const meta = a.meta.duration ? `${clock(a.meta.duration)} · ${a.meta.width}x${a.meta.height}${a.source_url ? ' · imported from link' : ''}` : 'Preparing';
+  $('head').replaceChildren(el('div', { class: 'card' },
+    el('div', { class: 'head' },
+      el('div', { class: 'ttl' }, el('h2', { title: a.name }, a.name), el('div', { class: 'muted', style: 'margin-top:3px' }, meta)),
+      el('div', { class: 'acts' },
+        vlmEnabled ? el('button', { class: 'btn ghost', disabled: a.status !== 'ready' || busy || !a.candidate_count, title: 'Ask the vision model to check each clip', onclick: async () => { try { await post(`/assets/${a.id}/verify`, { force: true }); poll(true); } catch (x) { toast(x.message, true) } } }, 'Verify with AI') : null,
+        el('button', { class: 'btn ghost', disabled: a.status !== 'ready' || busy, title: 'Recompute all signals from scratch', onclick: async () => { await post(`/assets/${a.id}/analyze`, { force: true }); poll(true); } }, 'Re-analyze'),
+        el('button', { class: 'btn', disabled: a.status !== 'ready' || busy, onclick: async () => { await post(`/assets/${a.id}/analyze`, { force: false }); poll(true); } }, 'Analyze'),
+        el('button', { class: 'btn bad', title: 'Delete this video and its clips', onclick: async () => {
+          if (!confirm(`Delete "${a.name}" and all its clips and exports?${busy ? ' Its running job will be cancelled.' : ''} This cannot be undone.`)) return;
+          try { await api(`/assets/${a.id}`, { method: 'DELETE' }); selected = null; sigs = {}; poll(true); } catch (x) { toast(x.message, true) } } }, icon.trash(), 'Delete'))),
+    el('div', { class: 'settings' },
+      el('label', { class: 'field' }, 'Game profile', gameSel),
+      prof && prof.needs_player_name ? el('label', { class: 'field' }, 'In-game name', nameIn) : null,
+      prof && prof.needs_player_name ? el('button', { class: 'btn ghost', onclick: async () => { await patch(`/assets/${a.id}`, { player_name: nameIn.value }); toast('Name saved. Re-analyze to apply it.'); } }, 'Save name') : null,
+      prof && prof.note ? el('span', { class: 'muted', style: 'flex:1;min-width:200px;font-size:13px' }, prof.note) : null)));
+}
+
+// ---------- clips ----------
+async function renderClips(a) {
+  const cands = await api(`/assets/${a.id}/candidates`);
+  const area = $('clipsArea');
+  const P = a.pipeline, running = P.state === 'running' || P.state === 'waiting';
+  if (!cands.length) {
+    area.replaceChildren(
+      el('div', { class: 'bar' }, el('h3', {}, 'Clips')),
+      running || a.status !== 'ready'
+        ? el('div', { class: 'grid' }, ...[0, 1, 2].map(() => el('div', { class: 'card skel' }, el('div', { class: 'a' }), el('div', { class: 'b' }, el('i', { style: 'width:46%' }), el('i', { style: 'width:80%;height:10px' })))))
+        : el('div', { class: 'card empty' }, el('h3', {}, 'No clips yet'), el('div', {}, 'Click Analyze to scan this video for highlights.')));
+    if (running) area.querySelector('.bar').append(el('span', { class: 'muted' }, 'Clips appear here, already trimmed, as soon as the analysis finishes.'));
+    return;
+  }
+  const best = Math.max(...cands.map(c => c.score));
+  let shown = cands.filter(c => filter === 'all' || (filter === 'approved' ? c.status === 'approved' : c.status === 'pending'));
+  shown.sort((x, y) => sortBy === 'best' ? y.score - x.score : x.start - y.start);
+  const seg = (id, text) => el('button', { class: filter === id ? 'on' : '', onclick: () => { filter = id; sigs.clips = null; poll(true); } }, text);
+  const sortSel = el('select', { class: 'sm', 'aria-label': 'Sort clips', onchange: e => { sortBy = e.target.value; sigs.clips = null; poll(true); } },
+    el('option', { value: 'best' }, 'Best first'), el('option', { value: 'time' }, 'In video order'));
+  sortSel.value = sortBy;
+  const toReview = cands.filter(c => c.status === 'pending').length;
+  area.replaceChildren(
+    el('div', { class: 'bar' },
+      el('div', {}, el('h3', {}, 'Clips'), el('span', { class: 'muted', style: 'margin-left:10px' }, `${cands.length} found · ${toReview} to review`)),
+      el('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;align-items:center' },
+        el('div', { class: 'tabs' }, seg('all', 'All'), seg('approved', 'Approved'), seg('pending', 'To review')), sortSel)),
+    shown.length ? el('div', { class: 'grid' }, ...shown.map(c => clipCard(a, c, c.score === best && cands.length > 1)))
+      : el('div', { class: 'card empty' }, el('h3', {}, 'Nothing here'), el('div', {}, 'No clips match this filter.')));
 }
 
 function aiBlock(v) {
   if (!v) return null;
-  const map = { confirmed: ['AI confirmed', 'approved'], rejected: ['AI: not a highlight', 'rejected'], unknown: ['AI unsure', 'queued'], error: ['AI error', 'failed'] };
-  const [text, cls] = map[v.verdict] || [v.verdict, ''];
-  return el('div', { class: 'ai' },
-    el('div', { class: 'h' }, chip(text, cls), v.event && v.event !== 'none' ? chip(label(v.event), 'event') : null,
-      el('span', { class: 'muted' }, `confidence ${Number(v.confidence || 0).toFixed(2)}`)),
-    v.evidence ? el('div', { class: 'why' }, v.evidence) : null);
+  const map = { confirmed: 'AI confirmed', rejected: 'AI: not a highlight', unknown: 'AI unsure', error: 'AI check failed' };
+  return el('div', { class: 'ai' }, icon.spark(), el('div', {}, el('b', {}, map[v.verdict] || v.verdict), v.evidence ? '. ' + v.evidence : ''));
 }
 
-function candCard(a, c) {
-  const s = el('input', { type: 'number', step: '0.5', value: c.start.toFixed(1) });
-  const e = el('input', { type: 'number', step: '0.5', value: c.end.toFixed(1) });
-  const v = el('video', { controls: 'controls', preload: 'metadata', src: `${a.video}#t=${c.start},${c.end}` });
-  v.addEventListener('timeupdate', () => { if (v.currentTime >= +e.value) v.pause(); });
-  const exports = el('div', { class: 'exports' });
+function clipCard(a, c, top) {
+  const dur = a.meta.duration || 0;
+  const nudge = async (which, d) => {
+    let s = c.start + (which === 'start' ? d : 0), e = c.end + (which === 'end' ? d : 0);
+    s = Math.max(0, s); e = Math.min(dur, e);
+    if (e - s < 2) return toast('A clip needs to be at least 2 seconds long.', true);
+    try { await patch(`/candidates/${c.id}`, { start: s, end: e }); sigs.clips = null; poll(true); } catch (x) { toast(x.message, true) }
+  };
+  const nb = (which, d, text) => el('button', { class: 'btn ghost', style: 'padding:5px 10px', onclick: () => nudge(which, d) }, text);
+  const exportsBox = el('div', { class: 'exports' });
   const loadExports = async () => {
     const ex = await api(`/candidates/${c.id}/exports`);
-    exports.replaceChildren(...ex.slice(0, 4).map(x => el('div', {}, chip(x.status), el('span', {}, x.kind), x.url ? el('a', { href: x.url, download: '' }, 'Download') : null)));
+    exportsBox.replaceChildren(...ex.slice(0, 4).map(x => el('div', {}, chip(x.status), el('span', {}, x.kind), x.url ? el('a', { href: x.url, download: '' }, 'Download') : null)));
     if (ex.some(x => ['queued', 'running'].includes(x.status))) setTimeout(loadExports, 1500);
   };
   loadExports();
-  const bd = c.score_breakdown || {};
-  return el('div', { class: 'card cand ' + c.status },
-    v,
-    el('div', { class: 'cand-b' },
-      el('div', { class: 'cand-top' },
-        el('span', { class: 'score' }, c.score.toFixed(2), el('small', {}, ' score')),
-        chip(c.status), c.manual ? chip('manual') : null,
-        ...(c.event_types || []).map(t => chip(label(t), 'event')),
-        el('span', { class: 'muted', style: 'margin-left:auto' }, `peak ${fmt(c.peak)}`)),
-      el('div', { class: 'sigs' },
-        signal('Game event', bd.game_event, true), signal('Significance', bd.event_significance, true),
-        signal('Audio', bd.audio_excitement), signal('Motion', bd.visual_intensity), signal('Scene cuts', bd.scene_change)),
+  const open = openAdjust.has(c.id), bd = c.score_breakdown || {};
+  const media = c.preview_url
+    ? el('div', { class: 'media' }, el('video', { controls: true, playsinline: true, preload: 'metadata', src: c.preview_url, 'aria-label': 'Clip preview' }), top ? el('div', { class: 'tag-top' }, 'Top pick') : null)
+    : el('div', { class: 'media pending' }, el('div', { class: 'wait' }, el('div', { class: 'dot running' }), 'Trimming clip...'), top ? el('div', { class: 'tag-top' }, 'Top pick') : null);
+  media.append(el('div', { class: 'len' }, clock(c.length)));
+  return el('div', { class: 'card clip ' + c.status },
+    media,
+    el('div', { class: 'cb' },
+      el('div', { class: 'score-row' }, el('span', { class: 'score' }, c.score.toFixed(2)),
+        el('div', { class: 'meter' }, el('i', { style: `width:${Math.round(Math.min(1, c.score) * 100)}%` })),
+        chip(c.status === 'pending' ? 'to review' : c.status, c.status)),
+      el('div', { class: 'chips' }, ...(c.event_types || []).map(t => chip(label(t), 'event')), c.manual ? chip('manual') : null),
       aiBlock(c.verification),
-      el('div', { class: 'trim' }, el('span', {}, 'Start'), s, el('span', {}, 'End'), e,
-        el('button', { class: 'btn secondary sm', onclick: async () => { try { await patch(`/candidates/${c.id}`, { start: +s.value, end: +e.value }); v.src = `${a.video}#t=${s.value},${e.value}`; toast('Trim saved.'); } catch (x) { toast(x.message, true) } } }, 'Save trim')),
-      el('div', { class: 'btns' },
-        el('button', { class: 'btn ok sm', onclick: async () => { await post(`/candidates/${c.id}/approve`); refresh(); } }, 'Approve'),
-        el('button', { class: 'btn bad sm', onclick: async () => { await post(`/candidates/${c.id}/reject`); refresh(); } }, 'Reject'),
-        el('button', { class: 'btn sm', style: 'margin-left:auto', onclick: async () => { await post(`/candidates/${c.id}/export`, { kinds: ['original', 'vertical'] }); loadExports(); } }, 'Export original + vertical')),
-      exports));
+      open ? el('div', { class: 'adjust' },
+        el('div', { style: 'display:flex;justify-content:space-between;color:var(--muted);font-size:13px' }, el('span', {}, 'Clip length'), el('b', { style: 'color:var(--text)' }, clock(c.length))),
+        el('div', { class: 'r' }, el('span', {}, 'Start'), nb('start', -2, '2s earlier'), nb('start', 2, '2s later')),
+        el('div', { class: 'r' }, el('span', {}, 'End'), nb('end', -2, '2s shorter'), nb('end', 2, '2s longer')),
+        el('div', { class: 'muted', style: 'font-size:12px' }, 'The clip is trimmed again after each change.')) : null,
+      el('div', { class: 'actions' },
+        el('button', { class: 'btn ok', onclick: async () => { await post(`/candidates/${c.id}/approve`); sigs.clips = null; poll(true); } }, 'Approve'),
+        el('button', { class: 'btn bad', onclick: async () => { await post(`/candidates/${c.id}/reject`); sigs.clips = null; poll(true); } }, 'Reject'),
+        el('button', { class: 'btn link', 'aria-expanded': String(open), onclick: () => { open ? openAdjust.delete(c.id) : openAdjust.add(c.id); sigs.clips = null; poll(true); } }, 'Adjust length', icon.chev()),
+        el('button', { class: 'btn push', title: 'Render the original and the vertical 9:16 version', onclick: async () => { try { await post(`/candidates/${c.id}/export`, { kinds: ['original', 'vertical'] }); loadExports(); } catch (x) { toast(x.message, true) } } }, 'Export')),
+      exportsBox));
 }
 
-// ---------- boot ----------
+// ---------- polling / routing ----------
+async function select(id) { selected = id; sigs = {}; await poll(true); }
+
+let polling = false;
+async function poll(force) {
+  if (polling && !force) return;
+  polling = true;
+  try {
+    const list = await api('/assets');
+    renderLibrary(list);
+    const a = list.find(x => x.id === selected);
+    lastAsset = a || null;
+    if (!a) {
+      $('head').replaceChildren(); $('pipe').replaceChildren();
+      $('clipsArea').replaceChildren(el('div', { class: 'card empty' }, el('h3', {}, list.length ? 'Select a video' : 'No videos yet'),
+        el('div', {}, list.length ? 'Choose one from the library to see its progress and clips.' : 'Paste a YouTube or Twitch link to get started.')));
+      return;
+    }
+    const hs = JSON.stringify([a.id, a.status, a.game, a.profile_config, isBusy(a), a.candidate_count > 0, vlmEnabled]);
+    if (hs !== sigs.head) { sigs.head = hs; renderHead(a); }
+    renderPipeline(a);
+    const cs = JSON.stringify([a.id, a.candidate_count, a.verified_count, a.previews_ready, a.pipeline.state === 'running', filter, sortBy, [...openAdjust]]);
+    if (cs !== sigs.clips) { sigs.clips = cs; await renderClips(a); }
+  } catch (x) { /* transient: next tick retries */ }
+  finally { polling = false; }
+}
+
 Promise.all([api('/health').catch(() => ({})), api('/game-profiles')]).then(([h, p]) => {
   vlmEnabled = !!h.vlm_enabled;
   profiles = p;
   $('impGame').replaceChildren(...p.map(x => el('option', { value: x.id }, x.name)));
   const sync = () => { const pr = profiles.find(x => x.id === $('impGame').value); $('impNameWrap').style.display = pr && pr.needs_player_name ? '' : 'none'; };
-  $('impGame').onchange = sync; sync(); refresh();
+  $('impGame').onchange = sync; sync();
+  poll(true);
 });
-setInterval(async () => { try { await loadAssets() } catch {} }, 2000);
-setInterval(async () => {
-  // re-render the detail pane only when something meaningful changed, so video playback isn't reset
-  try {
-    const list = await api('/assets'); const a = list.find(x => x.id === selected);
-    const sig = a ? JSON.stringify([a.status, a.candidate_count, a.latest_job && a.latest_job.status]) : '';
-    if (sig !== window._sig) { window._sig = sig; refresh(); }
-  } catch {}
-}, 2000);
+setInterval(() => poll(false), 1500);
 </script>
 </body>
 </html>

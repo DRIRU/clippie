@@ -122,6 +122,7 @@ def analyze(job_id, asset_id, params, progress):
     with session() as s:
         s.query(GameEvent).filter_by(asset_id=asset_id).delete()
         # Replace auto candidates but keep anything the user created or already decided on.
+        stale = [c.id for c in s.query(Candidate).filter_by(asset_id=asset_id, manual=False, status="pending").all()]
         s.query(Candidate).filter_by(asset_id=asset_id, manual=False, status="pending").delete()
         for e in events:
             s.add(GameEvent(asset_id=asset_id, game=game, event_type=e.event_type, timestamp=e.timestamp,
@@ -130,8 +131,38 @@ def analyze(job_id, asset_id, params, progress):
             s.add(Candidate(asset_id=asset_id, start=c.start, end=c.end, peak=c.peak, score=c.score,
                             score_breakdown=c.breakdown, event_types=c.event_types))
         s.commit()
+    for cid in stale:  # files belonging to candidates that no longer exist
+        st.delete(f"previews/{cid}.mp4")
+        st.delete(f"frames/{cid}")
+    if cands:
+        jobs.enqueue("preview", asset_id)       # trimmed clips first, so they show up quickly
     if vlm.enabled() and cfg.auto_verify and cands:
         jobs.enqueue("verify", asset_id)
+
+
+@jobs.handler("preview")
+def preview(job_id, asset_id, params, progress):
+    """Render a small trimmed clip per candidate so the UI can play it directly.
+    Idempotent: candidates that already have a preview are skipped."""
+    st = get_storage()
+    with session() as s:
+        asset = s.get(MediaAsset, asset_id)
+        src, has_audio = st.local_path(asset.source_key), asset.meta.get("has_audio", True)
+        q = s.query(Candidate).filter_by(asset_id=asset_id)
+        if params.get("candidate_id"):
+            q = q.filter_by(id=params["candidate_id"])
+        todo = [(c.id, c.start, c.end) for c in q.order_by(Candidate.start).all() if not c.preview_key]
+    for n, (cid, start, end) in enumerate(todo):
+        progress("rendering", n / max(1, len(todo)))
+        key = f"previews/{cid}.mp4"
+        rendering.render(src, st.new_path(key), start, end, "preview", has_audio)
+        with session() as s:
+            c = s.get(Candidate, cid)
+            if c is None or (c.start, c.end) != (start, end):
+                st.delete(key)          # deleted or re-trimmed while rendering; a newer job handles it
+                continue
+            c.preview_key = key
+            s.commit()
 
 
 @jobs.handler("verify")

@@ -4,16 +4,23 @@ checkpoints already exist."""
 from __future__ import annotations
 
 import logging
+import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Callable
+
+from sqlalchemy.orm.exc import StaleDataError
 
 from .config import get_settings
 from .db import session
 from .models import Job
 
 log = logging.getLogger("clippie.jobs")
+
+class Cancelled(Exception):
+    """Raised inside a running job when its video was deleted."""
+
 
 _handlers: dict[str, Callable] = {}
 _pool: ThreadPoolExecutor | None = None
@@ -34,13 +41,16 @@ def _executor() -> ThreadPoolExecutor:
 
 
 def update(job_id: str, **fields) -> None:
-    with session() as s:
-        j = s.get(Job, job_id)
-        if j:
-            for k, v in fields.items():
-                setattr(j, k, v)
-            j.updated_at = datetime.now(timezone.utc)
-            s.commit()
+    try:
+        with session() as s:
+            j = s.get(Job, job_id)
+            if j:
+                for k, v in fields.items():
+                    setattr(j, k, v)
+                j.updated_at = datetime.now(timezone.utc)
+                s.commit()
+    except StaleDataError:
+        pass  # the job row was deleted along with its video
 
 
 def enqueue(kind: str, asset_id: str | None = None, params: dict | None = None) -> str:
@@ -65,15 +75,25 @@ def retry(job_id: str) -> bool:
 
 
 def _run(job_id: str) -> None:
-    with session() as s:
-        j = s.get(Job, job_id)
-        if not j or j.status not in ("queued", "running"):
-            return
-        kind, asset_id, params = j.kind, j.asset_id, dict(j.params or {})
-        j.status, j.attempts = "running", (j.attempts or 0) + 1
-        s.commit()
+    try:
+        with session() as s:
+            j = s.get(Job, job_id)
+            if not j or j.status not in ("queued", "running"):
+                return
+            kind, asset_id, params = j.kind, j.asset_id, dict(j.params or {})
+            j.status, j.attempts = "running", (j.attempts or 0) + 1
+            s.commit()
+    except StaleDataError:
+        return
+
+    last_check = [0.0]
 
     def progress(stage: str, frac: float | None = None):
+        # Cheap, throttled check so deleting a video stops its running job (download, OCR, ...)
+        if asset_id and time.monotonic() - last_check[0] > 1.0:
+            last_check[0] = time.monotonic()
+            if not _asset_exists(asset_id):
+                raise Cancelled(asset_id)
         f = {"stage": stage}
         if frac is not None:
             f["progress"] = round(max(0.0, min(1.0, frac)), 3)
@@ -82,9 +102,35 @@ def _run(job_id: str) -> None:
     try:
         _handlers[kind](job_id, asset_id, params, progress)
         update(job_id, status="done", progress=1.0, stage="done")
+    except Cancelled:
+        log.info("job %s (%s) cancelled: video was deleted", job_id, kind)
     except Exception as e:  # noqa: BLE001 - job boundary
-        log.error("job %s (%s) failed: %s\n%s", job_id, kind, e, traceback.format_exc())
-        update(job_id, status="failed", error=str(e)[:1000])
+        if asset_id and not _asset_exists(asset_id):
+            log.info("job %s (%s) stopped: video was deleted", job_id, kind)
+        else:
+            log.error("job %s (%s) failed: %s\n%s", job_id, kind, e, traceback.format_exc())
+            update(job_id, status="failed", error=str(e)[:1000])
+    finally:
+        if asset_id and not _asset_exists(asset_id):
+            _purge_files(asset_id)  # the job may have written files after the delete ran
+
+
+def _asset_exists(asset_id: str) -> bool:
+    from .models import MediaAsset
+
+    with session() as s:
+        return s.get(MediaAsset, asset_id) is not None
+
+
+def _purge_files(asset_id: str) -> None:
+    from .storage import get_storage
+
+    st = get_storage()
+    for key in (f"sources/{asset_id}", f"thumbs/{asset_id}.jpg", f"analysis/{asset_id}"):
+        try:
+            st.delete(key)
+        except OSError:
+            pass
 
 
 def resume_unfinished() -> int:

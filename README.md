@@ -32,7 +32,9 @@ Self-hosted · local-first · no paid AI APIs
 | **Finds the loud, busy moments** | Audio loudness, spectral change, motion and scene cuts fused into a score with a visible breakdown. |
 | **Game profiles** *(experimental)* | Reads the Valorant kill feed with OCR to find *your* kills, multi-kills, and ACE / CLUTCH banners. |
 | **AI verification** *(optional)* | Sends a few frames per candidate to your own OpenAI-compatible vision model (for example vLLM serving Qwen2.5-VL) and shows a verdict with a one-line explanation. |
-| **Review in the browser** | Preview each clip, nudge start and end, approve or reject. |
+| **Live pipeline progress** | Right after you send a link, a step tracker shows Download, Prepare, Audio, Motion, Game HUD, Find highlights, AI check and Trim clips, with percentages. |
+| **Ready-to-watch clips** | Every candidate is rendered as its own short, trimmed clip, so you press play and watch it. No scrubbing through the full video or reading timestamps. |
+| **Review in the browser** | Approve or reject, and adjust a clip's length with 2-second nudges; it is re-trimmed automatically. |
 | **Two exports per clip** | Original aspect ratio, and 1080×1920 vertical with a blurred background (no blind centre crop). |
 | **Survives restarts** | Jobs live in SQLite with progress and retry. Finished analysis stages are checkpointed and skipped on resume. |
 | **Runs anywhere** | SQLite + local folder + in-process workers. No Docker, Postgres, Redis or MinIO needed. |
@@ -137,7 +139,8 @@ clippie/
 ├── pipeline.py       import · ingest · analyze · export job handlers
 ├── jobs.py           in-process job runner with persistence and retry
 ├── media.py          ffprobe, thumbnails, safe URL import (yt-dlp)
-├── rendering.py      original and vertical ffmpeg exports
+├── rendering.py      preview, original and vertical ffmpeg renders
+├── progress.py       turns a video's jobs into pipeline steps for the UI
 ├── vlm.py            vision-model verification client
 ├── detection/        audio and motion signals, OCR, candidate fusion
 ├── profiles/         game profile framework + Valorant
