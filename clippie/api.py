@@ -669,6 +669,54 @@ def perf_runs():
     return {"runs": perf.runs()}
 
 
+class RunPatch(BaseModel):
+    label: str | None = None
+    notes: str | None = None
+
+
+@app.patch("/api/perf/runs/{run_id}")
+def perf_run_label(run_id: str, body: RunPatch):
+    """Name a run (for example "6 workers, no NVENC") so it is easy to find when comparing."""
+    if not perf.rename_run(run_id, body.label, body.notes):
+        raise HTTPException(404, "run not found")
+    return next(r for r in perf.runs() if r["run_id"] == run_id)
+
+
+@app.get("/api/perf/series")
+def perf_series(bucket: str = "1h", since: str | None = None, until: str | None = None, run: str | None = None,
+                asset_id: str | None = None, stage: str | None = None, status: str | None = None):
+    """Per-stage time series for trend charts: one point per time bucket that has data."""
+    try:
+        return perf.series(bucket, **_perf_filters(since, until, run, asset_id, stage, status))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/perf/timeline")
+def perf_timeline(asset_id: str, gap: float = 600.0):
+    """Every timed stage of one video laid out in time (a waterfall). Activity separated by more than
+    `gap` seconds of silence is returned as separate bursts."""
+    if gap < 1:
+        raise HTTPException(400, "gap must be at least 1 second")
+    return perf.timeline(asset_id, gap)
+
+
+@app.get("/api/perf/videos")
+def perf_videos(since: str | None = None, until: str | None = None, run: str | None = None, limit: int = 50,
+                offset: int = 0):
+    try:
+        f = _perf_filters(since, until, run, None, None, None)
+    except HTTPException:
+        raise
+    return {"videos": perf.videos(max(1, min(limit, 200)), max(0, offset), since=f["since"], until=f["until"], run=f["run"])}
+
+
+@app.get("/api/perf/live")
+def perf_live(recent: int = 15):
+    """Running and queued jobs, worker slots, and what finished most recently."""
+    return perf.live(max(1, min(recent, 100)))
+
+
 class NoCacheStatic(StaticFiles):
     """Always revalidate the UI so edits show up on a normal reload."""
 

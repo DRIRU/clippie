@@ -97,7 +97,7 @@ def _run(job_id: str) -> None:
     except Exception:  # noqa: BLE001
         queue_wait = None
     perf.set_context(job_id=job_id, asset_id=asset_id)
-    perf.job_started()
+    perf.job_started(job_id, kind, asset_id)
 
     last_check = [0.0]
 
@@ -131,7 +131,7 @@ def _run(job_id: str) -> None:
         perf.record(f"job.{kind}", time.perf_counter() - started, media_seconds=notes.pop("media_seconds", None),
                     status=perf_status, job_id=job_id, asset_id=asset_id,
                     detail={"queue_wait_s": None if queue_wait is None else round(queue_wait, 3), "attempt": attempts, **notes})
-        perf.job_finished()
+        perf.job_finished(job_id)
         perf.clear_context()
         if asset_id and not _asset_exists(asset_id):
             _purge_files(asset_id)  # the job may have written files after the delete ran

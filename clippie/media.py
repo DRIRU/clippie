@@ -110,7 +110,8 @@ def download_url(url: str, outdir: Path, max_bytes: int, on_progress=None) -> tu
 
     opts = {
         "outtmpl": str(outdir / "source.%(ext)s"),
-        "format": "bv*[height<=1080]+ba/b[height<=1080]/b",
+        # Prefer H.264: it decodes about 3x faster than AV1 on typical hardware, which speeds up every later stage.
+        "format": "bv*[height<=1080][vcodec^=avc1]+ba/bv*[height<=1080]+ba/b[height<=1080]/b",
         "merge_output_format": "mp4",
         "noplaylist": True,
         "max_filesize": max_bytes,

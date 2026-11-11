@@ -183,7 +183,17 @@ Every server start is a **run** that records your settings (workers, NVENC, mode
 .venv/Scripts/python -m tools.perf_report --csv events.csv         # raw events for a spreadsheet
 ```
 
-- **Over HTTP:** `GET /api/perf/summary`, `/api/perf/events` (add `format=csv`) and `/api/perf/runs`, with the same filters (`since`, `run`, `asset_id`, `stage`, `status`, `group_by`).
+- **Over HTTP:** the same data is available as JSON (see [`DASHBOARD_PLAN.md`](DASHBOARD_PLAN.md) for the dashboard being built on it):
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/perf/summary` | statistics per stage (`since`, `run`, `asset_id`, `stage`, `status`, `group_by`) |
+| `GET /api/perf/events` | raw events, as JSON or `format=csv` |
+| `GET /api/perf/series?bucket=1h` | per-stage time series (count, errors, p50, p95, x real) for trend charts |
+| `GET /api/perf/timeline?asset_id=` | one video's stages laid out in time, in bursts, with queue waits and active time |
+| `GET /api/perf/videos` | one row per video: work and active time, slowest stage, errors |
+| `GET /api/perf/live` | running and queued jobs, worker slots, recent results |
+| `GET /api/perf/runs`, `PATCH /api/perf/runs/{id}` | runs with their settings and hardware; give a run a label and notes |
 
 Notes: logging never interrupts processing (a failed write is only logged), turn it off with `CLIPPIE_PERF_LOG=false`, and clear it with `python -m tools.perf_report --clear --yes`. Work done by external programs such as ffmpeg is included in the wall-clock time, but CPU or memory use is not recorded, only timing, sizes, and GPU memory for transcription.
 
@@ -228,6 +238,7 @@ Environment variables with the `CLIPPIE_` prefix, or the same keys in a `.env` f
 | `ffmpeg` or `ffprobe` not found | Install FFmpeg and make sure both are on your PATH. |
 | Subtitles fail or never start | Check that `pip install -r requirements.txt` completed (it includes `faster-whisper`) and that the machine can reach Hugging Face for the first model download. If a GPU is detected but its CUDA libraries are missing, clippie falls back to the CPU on its own. |
 | Subtitle text looks wrong in an export | The font may not be installed on this machine; choose a different font in the Subtitles panel. |
+| Motion analysis is slow | Check the codec in the log (`analyze.motion`, `detail.codec`). AV1 is the slow case: many ffmpeg builds decode it with libaom at about 5x real time. AV1 files are decoded with PyAV's bundled dav1d instead (about 21x on 1080p60); new YouTube imports prefer H.264. Hardware decode does not help on GPUs without AV1 support (for example the GTX 16 series). |
 | A video won't delete cleanly on Windows | The browser may still be streaming it. Deleting retries for a few seconds; if it still fails, close the tab and delete again. |
 
 ## Security notes

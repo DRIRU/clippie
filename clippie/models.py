@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -106,11 +106,14 @@ class PerfRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     host: Mapped[dict] = mapped_column(JSON, default=dict)
+    label: Mapped[str | None] = mapped_column(String(120), nullable=True)   # your name for this run, e.g. "6 workers"
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class PerfEvent(Base):
     """One timed stage. Deliberately has no foreign keys, so deleting a video keeps its measurements."""
     __tablename__ = "perf_events"
+    __table_args__ = (Index("ix_perf_events_stage_ts", "stage", "ts"),)   # trend queries: one stage over time
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_id: Mapped[str] = mapped_column(String(36), index=True)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)

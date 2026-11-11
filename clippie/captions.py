@@ -202,10 +202,11 @@ def build_ass(words: list[dict], style: CaptionStyle, width: int, height: int) -
 
 # ---------------------------------------------------------------- transcription
 def available() -> bool:
+    """Is faster-whisper installed? Checked without importing it (the import itself takes about a second)."""
+    import importlib.util
     try:
-        import faster_whisper  # noqa: F401
-        return True
-    except ImportError:
+        return importlib.util.find_spec("faster_whisper") is not None
+    except (ImportError, ValueError):
         return False
 
 

@@ -102,8 +102,9 @@ def analyze(job_id, asset_id, params, progress):
     if force or not video_ck.exists():
         progress("motion", 0.3)
         with perf.timer("analyze.motion", media_seconds=duration, width=meta.get("width"), height=meta.get("height"),
-                        fps=meta.get("fps")):
-            v = signals.video_features(src, lambda f: progress("motion", 0.3 + f * 0.25), duration)
+                        fps=meta.get("fps"), codec=meta.get("video_codec")):
+            v = signals.video_features(src, lambda f: progress("motion", 0.3 + f * 0.25), duration,
+                                       codec=meta.get("video_codec"))
         np.savez(video_ck, **v)
 
     game_events = []

@@ -44,7 +44,8 @@ def _add_missing_columns():
     insp = inspect(_engine)
     wanted = {"media_assets": [("profile_config", "JSON"), ("caption_style", "JSON"), ("layout", "JSON")],
               "clip_candidates": [("verification", "JSON"), ("preview_key", "VARCHAR(500)"), ("captions", "JSON")],
-              "exports": [("subtitles", "BOOLEAN")]}
+              "exports": [("subtitles", "BOOLEAN")],
+              "perf_runs": [("label", "VARCHAR(120)"), ("notes", "TEXT")]}
     for table, cols_needed in wanted.items():
         have = {c["name"] for c in insp.get_columns(table)}
         for name, ctype in cols_needed:
@@ -57,3 +58,6 @@ def session():
     if _Session is None:
         init_db()
     return _Session()
+    # create_all() adds indexes only to new tables, so add the ones introduced later by hand
+    with _engine.begin() as conn:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_perf_events_stage_ts ON perf_events (stage, ts)"))
